@@ -25,6 +25,7 @@ class Pedidos:
         cantidad INTEGER DEFAULT 0)
         ''')
         conn.commit()
+        return conn
 
     def guardar(self):
         conn.execute(
@@ -70,7 +71,7 @@ class bandos:
 
     def agregar_bando(self):
         conn.execute(
-            'INSERT INTO bandos VALUES (?, ?, ?)',
+            'INSERT INTO bandos (corte, talla, cantidad) VALUES (?, ?, ?)',
             (self.corte, self.talla, self.cantidad)
         )
         conn.execute(
@@ -217,7 +218,7 @@ class Tareas:
         id_empleado INTEGER NOT NULL,
         corte INTEGER NOT NULL,
         bandos INTEGER NOT NULL,
-        operacion INTEGER NOT NULL
+        operacion INTEGER NOT NULL,
         FOREIGN KEY(id_empleado) REFERENCES empleados(id),
         FOREIGN KEY(corte) REFERENCES pedidos(id),
         FOREIGN KEY(bandos) REFERENCES bandos(id),
@@ -297,7 +298,7 @@ class Cuentas:
         usuario TEXT NOT NULL,
         password TEXT NOT NULL,
         rol TEXT NOT NULL,
-        FOREIGN KEY(id_empleado) REFERENCES empleados(id))
+        FOREIGN KEY(id_empleado) REFERENCES empleados(id));
                      ''')
         conn.commit()
         return conn
@@ -424,7 +425,7 @@ class InterfazGrafica:
                 if self.tipo_usuario == "administrador":
                     self.menu_administrador()
                 else:
-                    self.menu_empledo()
+                    self.menu_administrador()
             except ValueError as e:
                 messagebox.showerror("Error", f"Error: {e}")
         else:
@@ -480,7 +481,7 @@ class InterfazGrafica:
             admin = Empleados("admin", 0000, "administrador")
             admin.guardar()
             cuenta = Cuentas(1, nuevo_usuario, new_pass, "administrador")
-            Cuentas.guardar(cuenta)
+            cuenta.guardar()
             self.ventana_login()
             messagebox.showinfo("Éxito", "Usuario y contraseña actualizados\nInicie sesión nuevamente")
 
@@ -511,10 +512,9 @@ class InterfazGrafica:
                  font=("Arial", 12), bg='white', fg='gray').pack(pady=20)
 
         botones = [
-            ("👥 Gestión de Empleados", self.gestion_empleados)
+            ("👥 Gestión de Empleados", self.gestion_empleados),
             ("📦 Gestión de Pedidos", self.gestion_pedidos),
             ("⚙️ Gestión de Operaciones", self.gestion_operaciones),
-            ("📊 Reportes", self.mostrar_reportes)
         ]
 
         for texto, comando in botones:
@@ -633,6 +633,9 @@ class InterfazGrafica:
         self.usuario_actual = None
         self.usuario_actual = None
         self.ventana_login()
+
+    def gestion_operaciones(self):
+        pass
 
     def ejecutar(self):
         self.root.mainloop()
