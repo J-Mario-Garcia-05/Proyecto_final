@@ -1,9 +1,13 @@
 import sqlite3
 import datetime
+import tkinter as tk
+from tkinter import messagebox, ttk
+
 
 DB_NAME = "registros.db"
 conn = sqlite3.connect(DB_NAME)
-c = conn.cursor()
+conn.execute("PRAGMA foreign_keys = ON")
+
 
 class Pedidos:
     def __init__(self, marca, categoria):
@@ -24,11 +28,11 @@ class Pedidos:
 
     def guardar(self):
         conn.execute(
-            'INSERT INTO pedidos VALUES (?, ?, ?)',
-            (self.marca, self.categoria, self.cantidad)
+            'INSERT INTO pedidos (marca, categoria) VALUES (?, ?)',
+            (self.marca, self.categoria)
         )
         conn.commit()
-        return c.lastrowid
+        return conn
 
     @staticmethod
     def modifcar(corte):
@@ -98,7 +102,7 @@ class Operaciones:
         self.big_price = big_price
 
     @staticmethod
-    def __conn():
+    def _conn():
         conn.row_factory = sqlite3.Row
         conn.execute('''
         CREATE TABLE IF NOT EXISTS operaciones (
@@ -111,9 +115,9 @@ class Operaciones:
         return conn
 
     def guardar(self):
-        with self.__conn() as cursor:
+        with self._conn() as cursor:
             cursor.execute(
-                "INSERT INTO operaciones (nombre, small_price, big_price) VALUES (?, ?, ?, ?)",
+                "INSERT INTO operaciones (nombre, small_price, big_price) VALUES (?, ?, ?)",
                 (self.nombre, self.small_price, self.big_price)
             )
 
@@ -147,7 +151,7 @@ class Empleados:
         self.area = area
 
     @staticmethod
-    def __conn():
+    def _conn():
         conn.row_factory = sqlite3.Row
         conn.execute('''
         CREATE TABLE IF NOT EXISTS empleados (
@@ -160,15 +164,15 @@ class Empleados:
         return conn
 
     def guardar(self):
-        with self.__conn() as cursor:
+        with self._conn() as cursor:
             cursor.execute(
-                "INSERT INTO empleados (nombre, telefono, area) VALUES (?, ?, ?)"
+                "INSERT INTO empleados (nombre, telefono, area) VALUES (?, ?, ?)",
                 (self.nombre, self.telefono, self.area)
             )
 
     @staticmethod
     def listar():
-        with Empleados.__conn() as cursor:
+        with Empleados._conn() as cursor:
             cur = cursor.execute('SELECT * FROM empleados')
             lista = cur.fetchall()
             if not lista:
@@ -192,7 +196,7 @@ class Empleados:
 
     @staticmethod
     def eliminar(id):
-        with Empleados.__conn() as cursor:
+        with Empleados._conn() as cursor:
             cur = cursor.execute('DELETE FROM empleados WHERE id = ?', (id,))
             if cur.rowcount:
                 raise ValueError("No se encontró ningún empleado!")
@@ -205,7 +209,7 @@ class Tareas:
         self.operacion = operacion
 
     @staticmethod
-    def __conn():
+    def _conn():
         conn.row_factory = sqlite3.Row
         conn.execute('''
         CREATE TABLE IF NOT EXISTS tareas (
@@ -223,7 +227,7 @@ class Tareas:
         return conn
 
     def guardar(self):
-        with self.__conn() as cursor:
+        with self._conn() as cursor:
             cursor.execute(
                 "INSERT INTO tareas(id_empleado, corte, bandos, operacion) VALUES (?, ?, ?, ?)",
                 (self.id_empleado, self.corte, self.bandos, self.operacion)
@@ -231,7 +235,7 @@ class Tareas:
 
     @staticmethod
     def listar(id_empleado):
-        with Tareas.__conn() as cursor:
+        with Tareas._conn() as cursor:
             lista = cursor.execute('SELECT * FROM tareas WHERE id_empleado = id_empleado').fetchall()
             if not lista:
                 raise ValueError("No se le han asignado tareas aún.")
@@ -239,10 +243,400 @@ class Tareas:
 
     @staticmethod
     def editar(id_empleado):
-        with Tareas.__conn() as cursor:
-            fila = cursor.execute("SELECT FROM tareas WHERE id_empleado = ?", (id_empleado)).fetchone()
-            if not fila:
-                raise ValueError("Aún no se le han asignado tareas")
-            print("Listar las tareas con un botón de modificar....")
+        with Tareas._conn() as cursor:
+            Tareas.listar(id_empleado)
             fila = cursor.execute("SELECT FROM tareas WHERE id_empleado = ? AND id = ?",
                                   (id_empleado, id)).fetchone()
+            id_empleado = input(f"Actualizar id empleado {fila['id_empleado']}: ") or fila['id_empleado']
+            corte = input(f"Actualizar corte {fila['corte']}: ") or fila['corte']
+            bandos = input(f"Modificar bandos {fila['bandos']}: ") or fila['bandos']
+            conn.execute(
+                "UPDATE tareas SET id_empleado = ?, corte = ?, bandos = ? WHERE id = ?",
+                (id_empleado, corte, bandos, fila['id'])
+            )
+
+    @staticmethod
+    def eliminar(id_empleado):
+        with Tareas._conn() as cursor:
+            Tareas.listar(id_empleado)
+            cursor.execute("DELETE FROM tareas WHERE id = ? AND id_empleado", (id_empleado, id))
+
+class Reportes:
+    def __init__(self, id_tarea):
+        self.id_tarea = id_tarea
+
+    @staticmethod
+    def __conn():
+        conn.row_factory = sqlite3.Row
+        conn.execute('''
+        CREATE TABLE IF NOT EXISTS reportes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_tarea INTEGER NOT NULL,
+        FOREIGN KEY(id_tarea) REFERENCES tareas(id))
+                     ''')
+        conn.commit()
+        return conn
+
+    def guardar(self):
+        pass
+
+class Cuentas:
+    def __init__(self, id_empleado, usuario, password, rol):
+        self.id_empleado = id_empleado
+        self.usuario = usuario
+        self.password = password
+        self.rol = rol
+
+    @staticmethod
+    def _conn():
+        conn.row_factory = sqlite3.Row
+        conn.execute('''
+        CREATE TABLE IF NOT EXISTS cuentas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_empleado INTEGER NOT NULL,
+        usuario TEXT NOT NULL,
+        password TEXT NOT NULL,
+        rol TEXT NOT NULL,
+        FOREIGN KEY(id_empleado) REFERENCES empleados(id))
+                     ''')
+        conn.commit()
+        return conn
+
+    def guardar(self):
+        with self._conn() as cursor:
+            cursor.execute(
+                "INSERT INTO cuentas(id_empleado, usuario, password, rol) VALUES (?, ?, ?, ?)",
+                (self.id_empleado, self.usuario, self.password, self.rol)
+            )
+        messagebox.showinfo("Éxito", "Cuenta creada correctamente!")
+
+    @staticmethod
+    def listar():
+        with Cuentas._conn() as cursor:
+            cur = cursor.execute("SELECT * FROM cuentas").fetchall()
+            if not cur:
+                return False
+            return True
+
+    @staticmethod
+    def buscar(usuario, password):
+        with Cuentas._conn() as cursor:
+            cur = cursor.execute("SELECT rol FROM cuentas WHERE usuario = ? AND password = ?" ,
+                                 (usuario, password)).fetchone()
+            if not cur:
+                raise ValueError("Usuario o contraseña incorrectos!")
+            return {cur['rol']}
+
+    @staticmethod
+    def eliminar(id_empleado):
+        with Cuentas._conn() as cursor:
+            cur = cursor.execute("DELETE FROM cuentas WHERE id_empleado = ?", (id_empleado,))
+
+class InterfazGrafica:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("OPERGest")
+        self.root.geometry("500x600")
+        self.root.resizable(False, False)
+        self.root.configure(bg='white')
+
+        self.centrar_ventana(500, 600)
+
+        self.usuario_actual = None
+        self.tipo_usuario = None
+
+        self.contenedor = tk.Frame(self.root, bg='white')
+        self.contenedor.pack(fill='both', expand=True)
+
+        self.ventana_login()
+
+    def centrar_ventana(self, ancho, alto):
+        ancho_pantalla = self.root.winfo_screenwidth()
+        alto_pantalla = self.root.winfo_screenheight()
+        x = (ancho_pantalla // 2) - (ancho // 2)
+        y = (alto_pantalla // 2) - (alto // 2)
+        self.root.geometry(f'{ancho}x{alto}+{x}+{y}')
+
+    def limpiar_contenedor(self):
+        for widget in self.contenedor.winfo_children():
+            widget.destroy()
+
+    def ventana_login(self):
+        self.limpiar_contenedor()
+
+        titulo = tk.Label(self.contenedor, text="INICIAR SESIÓN",
+                          font=("Arial", 16, "bold"), fg="gray")
+        titulo.pack(pady=40)
+
+        subtitulo = tk.Label(self.contenedor, text="Iniciar sesión\nIngrese usuario y contraseña",
+                             font=("Arial", 9), bg='white', fg='gray')
+        subtitulo.pack(pady=10)
+
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(pady=20, padx=50, fill='x')
+
+        tk.Label(frame, text="Usuario:", font=("Arial", 10), bg='white').pack(anchor='w', pady=(10, 5))
+        self.entry_usuario = tk.Entry(frame, font=("Arial", 10), relief='solid', bd=1)
+        self.entry_usuario.pack(fill="x", ipady=8)
+
+        tk.Label(frame, text="Contraseña:", font=("Arial", 10), bg='white').pack(anchor='w', pady=(20, 5))
+        self.entry_password = tk.Entry(frame, show="*", font=("Arial", 10), relief='solid', bd=1)
+        self.entry_password.pack(fill='x', ipady=8)
+        self.entry_password.bind('<Return>', lambda e: self.iniciar_sesion())
+        self.mostrar = False
+
+        def alternar_password():
+            if self.mostrar:
+                self.entry_password.config(show='*')
+                boton_ver.config(text="👁️")
+                self.mostrar = False
+            else:
+                self.entry_password.config(show='')
+                boton_ver.config(text="🙈")
+                self.mostrar = True
+
+        boton_ver = tk.Button(frame, text="👁️", bg='white', relief='flat', cursor="hand2",
+                              command=alternar_password)
+        boton_ver.pack(anchor='e', pady=(5, 0))
+
+        boton_ingresar = tk.Button(frame, text="Ingresar", bg="#0078D7", fg='white',
+                                   font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                                   command=self.iniciar_sesion)
+        boton_ingresar.pack(fill='x', pady=(30, 10), ipady=10)
+
+        boton_salir = tk.Button(frame, text="Salir", bg="#FF8C00", fg='white',
+                                font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                                command=self.root.quit)
+        boton_salir.pack(fill='x', ipady=10)
+
+    def iniciar_sesion(self):
+        usuario = self.entry_usuario.get()
+        password = self.entry_password.get()
+        lista_cuentas = Cuentas.listar()
+
+        if usuario == "" or password == "":
+            messagebox.showwarning("Campos vacíos", "Por favor complete todos los campos.")
+        elif lista_cuentas:
+            try:
+                rol = Cuentas.buscar(usuario, password)
+                self.tipo_usuario = rol
+                self.usuario_actual = usuario
+                if self.tipo_usuario == "administrador":
+                    self.menu_administrador()
+                else:
+                    self.menu_empledo()
+            except ValueError as e:
+                messagebox.showerror("Error", f"Error: {e}")
+        else:
+            if usuario == "admin" and password == "admin":
+                self.abrir_ventana_cambiar()
+            else:
+                messagebox.showerror("Error", "ERROR: Credenciales incorrectos")
+
+    def abrir_ventana_cambiar(self):
+        self.limpiar_contenedor()
+
+        titulo = tk.Label(self.contenedor, text="Crear cuenta",
+                          font=("Arial", 16, "bold"), bg='white')
+        titulo.pack(pady=40)
+
+        subtitulo = tk.Label(self.contenedor, text="Actualizar datos\nIngrese nuevos datos para actualizar la cuenta",
+                             font=("Arial", 9), bg='white', fg='gray')
+        subtitulo.pack(pady=10)
+
+        frame = tk.Frame(self.contenedor, bg="white")
+        frame.pack(pady=20, padx=50, fill="x")
+
+        tk.Label(frame, text="Nuevo usuario:", font=("Arial", 10), bg="white").pack(anchor="w", pady=(10, 5))
+        entry_nuevo_usuario = tk.Entry(frame, font=("Arial", 10), relief="solid", bd=1)
+        entry_nuevo_usuario.pack(fill="x", ipady=8)
+
+        tk.Label(frame, text="Nueva contraseña:", font=("Arial", 10), bg="white").pack(anchor="w", pady=(20, 5))
+        entry_new_pass = tk.Entry(frame, show="*", font=("Arial", 10), relief="solid", bd=1)
+        entry_new_pass.pack(fill="x", ipady=8)
+        self.mostrar = False
+
+        def alternar_password():
+            if self.mostrar:
+                entry_new_pass.config(show='*')
+                boton_ver.config(text="👁️")
+                self.mostrar = False
+            else:
+                entry_new_pass.config(show='')
+                boton_ver.config(text="🙈")
+                self.mostrar = True
+
+        boton_ver = tk.Button(frame, text="👁️", bg='white', relief='flat', cursor="hand2",
+                              command=alternar_password)
+        boton_ver.pack(anchor='e', pady=(5, 0))
+
+        def guardar_nuevos_datos():
+            nuevo_usuario = entry_nuevo_usuario.get().strip()
+            new_pass = entry_new_pass.get().strip()
+
+            if nuevo_usuario == "" or new_pass == "":
+                messagebox.showwarning("Campos vacíos", "Por favor complete ambos campos.")
+                return
+            admin = Empleados("admin", 0000, "administrador")
+            admin.guardar()
+            cuenta = Cuentas(1, nuevo_usuario, new_pass, "administrador")
+            Cuentas.guardar(cuenta)
+            self.ventana_login()
+            messagebox.showinfo("Éxito", "Usuario y contraseña actualizados\nInicie sesión nuevamente")
+
+        boton_guardar = tk.Button(frame, text="Guardar cambios", bg="#0078D7", fg='white',
+                                  font=("Arial", 10, "bold"), relief="flat", cursor="hand2",
+                                  command=guardar_nuevos_datos)
+        boton_guardar.pack(fill="x", pady=(30, 10), ipady=10)
+
+        boton_cancelar = tk.Button(frame, text="Cancelar", bg="#FF8C00", fg='white',
+                                   font=("Arial", 10, "bold"), relief="flat", cursor="hand2",
+                                   command=self.ventana_login)
+        boton_cancelar.pack(fill="x", ipady=10)
+
+    def menu_administrador(self):
+        self.limpiar_contenedor()
+
+        cabecera = tk.Frame(self.contenedor, bg ='#0078D7', height=80)
+        cabecera.pack(fill='x')
+        cabecera.pack_propagate(False)
+
+        tk.Label(cabecera, text=f"Bienvendio: {self.tipo_usuario}",
+                 font=("Arial", 14, "bold"), bg='#0078D7', fg='white').pack(pady=25)
+
+        frame_contenido = tk.Frame(self.contenedor, bg='white')
+        frame_contenido.pack(fill='both', expand=True, padx=40, pady=30)
+
+        tk.Label(frame_contenido, text="Seleccione una opción",
+                 font=("Arial", 12), bg='white', fg='gray').pack(pady=20)
+
+        botones = [
+            ("👥 Gestión de Empleados", self.gestion_empleados)
+            ("📦 Gestión de Pedidos", self.gestion_pedidos),
+            ("⚙️ Gestión de Operaciones", self.gestion_operaciones),
+            ("📊 Reportes", self.mostrar_reportes)
+        ]
+
+        for texto, comando in botones:
+            boton = tk.Button(frame_contenido, text=texto, bg='#0078D7', fg='white',
+                              font=("Arial", 11, "bold"), relief='flat', cursor="hand2",
+                              command=comando)
+            boton.pack(fill='x', pady=8, ipady=12)
+
+        pied_pagina = tk.Frame(self.contenedor, bg='white')
+        pied_pagina.pack(fill='x',padx=40, pady=20)
+
+        boton_cerrar = tk.Button(pied_pagina, text="Cerrar Sesión", bg='#E84C3C', fg='white',
+                                 font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                                 command=self.cerrar_sesion)
+        boton_cerrar.pack(fill='x', ipady=10)
+
+    def menu_empleado(self):
+        self.limpiar_contenedor()
+
+        cabecera = tk.Frame(self.contenedor,bg='#0078D7', height=80)
+        cabecera.pack(fill='x')
+        cabecera.pack_propagate(False)
+
+        tk.Label(cabecera, text=f"Bienvenidos: {self.tipo_usuario}",
+                 font=("Arial", 14, "bold"), bg='#0078D7', fg='white').pack(pady=25)
+
+        frame_contenido = tk.Frame(self.contenedor, bg='white')
+        frame_contenido.pack(fill='both', expand=True, padx=40, pady=30)
+
+        tk.Label(frame_contenido, text="Seleccione una opción",
+                 font=("Arial", 12), bg='white', fg='gray').pack(pady=20)
+
+        botones = [
+            ("📋 Ver mis tareas", self.ver_tareas_empleado),
+            ("✅ Completar operación", self.completar_operacion_empleado)
+        ]
+
+        for texto, comando in botones:
+            boton = tk.Button(frame_contenido, text=texto, bg='#0078D7', fg='white',
+                              font=("Arial", 11, "bold"), relief='flat', cursor="hand2",
+                              command=comando)
+            boton.pack(fill='x', pady=8, ipady=12)
+
+        pied_pagina = tk.Frame(self.contenedor, bg='white')
+        pied_pagina.pack(fill='x', padx=40, pady=20)
+
+        boton_cerrar = tk.Button(pied_pagina, text="Cerrar Sesión", bg='#E74C3C', fg='white',
+                                 font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                                 command=self.cerrar_sesion)
+        boton_cerrar.pack(fill='x', ipady=10)
+
+    def gestion_empleados(self):
+        self.limpiar_contenedor()
+
+        self.crear_cabecera_submenu("👥 Gestión de Empleados")
+
+        frame_contenido = tk.Frame(self.contenedor, bg='white')
+        frame_contenido.pack(fill='both', expand=True, padx=40, pady=30)
+
+        botones = [
+            ("Registrar empleado", self.registrar_empleado),
+            ("Listar empleados", self.listar_empleados),
+            ("Despedir empleado", self.despedir_empleado),
+            ("Calcular pago", self.calcular_pago_empleado)
+        ]
+
+        for texto, comando in botones:
+            btn = tk.Button(frame_contenido, text=texto, bg="#0078D7", fg="white",
+                            font=("Arial", 11, "bold"), relief='flat', cursor="hand2",
+                            command=comando)
+            btn.pack(fill='x', pady=8, ipady=12)
+
+        self.crear_footer_volver(self.menu_administrador)
+
+    def gestion_pedidos(self):
+        self.limpiar_contenedor()
+
+        self.crear_cabecera_submenu("📦 Gestión de Pedidos")
+
+        frame_contenido = tk.Frame(self.contenedor, bg='white')
+        frame_contenido.pack(fill='both', expand=True, padx=40, pady=30)
+
+        botones = [
+            ("Registrar operación", self.registrar_operacion),
+            ("Listar operaciones", self.listar_operaciones),
+            ("Asignar tarea", self.asignar_tarea),
+            ("Consultar operación", self.consultar_operacion)
+        ]
+
+        for texto, comando in botones:
+            btn = tk.Button(frame_contenido, text=texto, bg="#0078D7", fg="white",
+                            font=("Arial", 11, "bold"), relief='flat', cursor="hand2",
+                            command=comando)
+            btn.pack(fill='x', pady=8, ipady=12)
+
+        self.crear_footer_volver(self.menu_administrador)
+
+    def crear_cabecera_submenu(self, titulo):
+        cabecera = tk.Frame(self.contenedor, bg='#0078D7', height=80)
+        cabecera.pack(fill='x')
+        cabecera.pack_propagate(False)
+
+        tk.Label(cabecera, text=titulo,
+                 font=("Arial", 10, "bold"), bg='#0078D7', fg='white').pack(pady=25)
+
+    def crear_footer_volver(self, comando_volver):
+        pied_pagina = tk.Frame(self.contenedor, bg='white')
+        pied_pagina.pack(fill='x', padx=40, pady=20)
+
+        boton_volver = tk.Button(pied_pagina, text="← Volver", bg='#FF8C00', fg='white',
+                                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                                  command=comando_volver)
+        boton_volver.pack(fill='x', ipady=10)
+
+    def cerrar_sesion(self):
+        self.usuario_actual = None
+        self.usuario_actual = None
+        self.ventana_login()
+
+    def ejecutar(self):
+        self.root.mainloop()
+
+if __name__ == "__main__":
+    app = InterfazGrafica()
+    app.ejecutar()
