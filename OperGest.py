@@ -362,6 +362,20 @@ class InterfazGrafica:
         for widget in self.contenedor.winfo_children():
             widget.destroy()
 
+    def crear_footer_volver(self, comando_volver):
+        pied_pagina = tk.Frame(self.contenedor, bg='white')
+        pied_pagina.pack(fill='x', padx=40, pady=20)
+
+        boton_volver = tk.Button(pied_pagina, text="← Volver", bg='#FF8C00', fg='white',
+                                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                                  command=comando_volver)
+        boton_volver.pack(fill='x', ipady=10)
+
+    def cerrar_sesion(self):
+        self.usuario_actual = None
+        self.usuario_actual = None
+        self.ventana_login()
+
     def ventana_login(self):
         self.limpiar_contenedor()
 
@@ -620,22 +634,86 @@ class InterfazGrafica:
         tk.Label(cabecera, text=titulo,
                  font=("Arial", 10, "bold"), bg='#0078D7', fg='white').pack(pady=25)
 
-    def crear_footer_volver(self, comando_volver):
-        pied_pagina = tk.Frame(self.contenedor, bg='white')
-        pied_pagina.pack(fill='x', padx=40, pady=20)
-
-        boton_volver = tk.Button(pied_pagina, text="← Volver", bg='#FF8C00', fg='white',
-                                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
-                                  command=comando_volver)
-        boton_volver.pack(fill='x', ipady=10)
-
-    def cerrar_sesion(self):
-        self.usuario_actual = None
-        self.usuario_actual = None
-        self.ventana_login()
-
     def gestion_operaciones(self):
-        pass
+        self.limpiar_contenedor()
+
+        self.crear_cabecera_submenu("⚙️ Gestión de Operaciones")
+
+        frame_contenido = tk.Frame(self.contenedor, bg='white')
+        frame_contenido.pack(fill='both', expand=True, padx=40, pady=30)
+
+        botones = [
+            ("Registrar operación", self.registrar_operacion),
+            ("Consultar operación", self.listar_operaciones),
+            ("Asignar tarea", self.asignar_tarea)
+        ]
+
+        for texto, comando in botones:
+            boton = tk.Button(frame_contenido, text=texto, bg='#0078D7', fg='white',
+                              font=("Arial", 11, "bold"), relief='flat', cursor="hand2",
+                              command=comando)
+            boton.pack(fill='x', pady=8, ipady=12)
+
+        self.crear_footer_volver(self.menu_administrador)
+
+    #=====GESTIÓN EMPLEADOS=====
+    def registrar_empleado(self):
+        self.limpiar_contenedor()
+        self.crear_cabecera_submenu("Registrar empleado")
+
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(pady=20, padx=40, fill='both', expand=True)
+
+        tk.Label(frame, text="Nombre:", font=("Arial", 10), bg='white', fg='gray').pack(anchor='w', pady=(10, 2))
+        entry_nombre = tk.Entry(frame, font=("Arial", 10), relief='solid', bd=1)
+        entry_nombre.pack(fill='x', ipady=8, pady=(5,15))
+
+        tk.Label(frame, text="Teléfono:", font=("Arial", 10), bg='white', fg='gray').pack(anchor='w', pady=(10, 2))
+        entry_telefono = tk.Entry(frame, font=("Arial", 10), relief='solid', bd=1)
+        entry_telefono.pack(fill='x', ipady=8, pady=(5,15))
+
+        areas = ["Corte", "Costura", "Empacar"]
+
+        tk.Label(frame, text="Área:", font=("Arial", 10), bg='white', fg='gray').pack(anchor='w', pady=(10, 2))
+        seleccion_area = ttk.Combobox(frame, values=areas, state='readonly', font=("Arial", 10))
+        seleccion_area.pack(fill='x', ipady=8, pady=(5, 15))
+
+        label_salario = tk.Label(frame, text='Salario por hora:', font=("Arial", 10), bg='white', fg='gray')
+        entry_salario = tk.Entry(frame, font=("Arial", 10), relief='solid', bd=1)
+
+        def solicitar_salario(evento):
+            if seleccion_area.get().lower() == "corte" or seleccion_area.get().lower() == "empacar":
+                label_salario.pack(anchor='w', pady=(10, 2))
+                entry_salario.pack(fill='x', ipady=8, pady=(5, 15))
+            else:
+                label_salario.pack_forget()
+                entry_salario.pack_forget()
+
+        seleccion_area.bind("<<ComboboxSelected>>", solicitar_salario)
+
+        def guardar():
+            nombre = entry_nombre.get()
+            area = seleccion_area.get()
+
+            if not nombre or not area:
+                messagebox.showerror("Error", "Complete todos los campos.")
+                return
+            try:
+                if area.lower() == "corte" or area.lower() == "empacar":
+                    salario = float(entry_salario.get())
+            except ValueError as e:
+                messagebox.showerror("Error", str(e))
+
+        frame_btns = tk.Frame(frame, bg='white')
+        frame_btns.pack(side='bottom', fill='x', pady=20)
+
+        tk.Button(frame_btns, text="Guardar", bg="#FF8C00", fg="white",
+                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                  command=guardar).pack(side='left', expand=True, fill='x', padx=5, ipady=8)
+
+        tk.Button(frame_btns, text="Cancelar", bg="#0078D7", fg="white",
+                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                  command=self.gestion_empleados).pack(side='left', expand=True, fill='x', padx=5, ipady=8)
 
     def ejecutar(self):
         self.root.mainloop()
