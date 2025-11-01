@@ -153,63 +153,90 @@ class Empleados:
 
     @staticmethod
     def _conn():
+        conn = sqlite3.connect(DB_NAME)
         conn.row_factory = sqlite3.Row
         conn.execute('''
         CREATE TABLE IF NOT EXISTS empleados (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT NOT NULL,
-        telefono INTEGER NOT NULL,
-        area TEXT NOT NULL)
-                     ''')
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            telefono INTEGER NOT NULL,
+            area TEXT NOT NULL
+        )
+        ''')
         conn.commit()
         return conn
 
     def guardar(self):
-        with self._conn() as cursor:
-            cursor.execute(
-                "INSERT INTO empleados (nombre, telefono, area) VALUES (?, ?, ?)",
-                (self.nombre, self.telefono, self.area)
-            )
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO empleados (nombre, telefono, area) VALUES (?, ?, ?)",
+            (self.nombre, self.telefono, self.area)
+        )
+        conn.commit()
+        conn.close()
 
     @staticmethod
     def listar():
-        with Empleados._conn() as cursor:
-            cur = cursor.execute('SELECT * FROM empleados')
-            lista = cur.fetchall()
-            if len(lista) < 2:
-                raise ValueError("No hay empleados registrados!")
-            return lista
-
-    def obtener_id(self):
-        with Empleados._conn() as cursor:
-            cur = cursor.execute('SELECT * FROM empleados WHERE nombre = ?', (self.nombre,))
-            fila = cur.fetchone()
-            if not fila:
-                messagebox.showerror("Error", "No se encontró a ningún empleado")
-            else:
-                return fila['id']
+        conn = Empleados._conn()
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM empleados')
+        lista = cur.fetchall()
+        conn.close()
+        if len(lista) < 2:
+            raise ValueError("No hay empleados registrados!")
+        return lista
 
     @staticmethod
-    def modificar(id):
-        with Empleados._conn() as cursor:
-            cur = cursor.execute('SELECT * FROM empleados WHERE id = ?', (id,))
-            fila = cur.fetchone()
-            if not fila:
-                raise ValueError("No se encontró a ningún empleado!")
-            nombre = input(f"Actualizar nombre {fila['nombre']}: ") or fila['nombre']
-            telefono = int(input(f"Actualizar teléfono {fila['telefono']}: ") or fila['telefono'])
-            area = input(f"Actualizar area {fila['area']}: ") or fila['area']
-            conn.execute(
-                "UPDATE empleados SET nombre, telefono, area = ? WHERE id = ?",
-                (nombre, telefono, area, id)
-            )
+    def consultar(id_empleado):
+        conn = Empleados._conn()
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM empleados WHERE id = ?', (id_empleado,))
+        empleado = cur.fetchone()
+        if not empleado:
+            messagebox.showerror("Error", "No se encontró a ningpun empleado")
+        else:
+            return empleado
+
+    def obtener_id(self):
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM empleados WHERE nombre = ?', (self.nombre,))
+        fila = cur.fetchone()
+        conn.close()
+        if not fila:
+            messagebox.showerror("Error", "No se encontró a ningún empleado")
+        else:
+            return fila['id']
+
+    @staticmethod
+    def modificar(id, nombre, telefono, area):
+        conn = Empleados._conn()
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM empleados WHERE id = ?', (id,))
+        fila = cur.fetchone()
+        if not fila:
+            conn.close()
+            raise ValueError("No se encontró a ningún empleado!")
+        cur.execute(
+            "UPDATE empleados SET nombre=?, telefono=?, area=? WHERE id=?",
+            (nombre, telefono, area, id)
+        )
+        conn.commit()
+        conn.close()
 
     @staticmethod
     def eliminar(id):
-        with Empleados._conn() as cursor:
-            cur = cursor.execute('DELETE FROM empleados WHERE id = ?', (id,))
-            if cur.rowcount:
-                raise ValueError("No se encontró ningún empleado!")
+        conn = Empleados._conn()
+        cur = conn.cursor()
+        cur.execute('DELETE FROM empleados WHERE id = ?', (id,))
+        if cur.rowcount == 0:
+            conn.close()
+            raise ValueError("No se encontró ningún empleado!")
+        conn.commit()
+        conn.close()
+        messagebox.showinfo("Éxito", f"Se eliminó al empleado {id} del registro")
+
 
 class Salarios:
     def __init__(self, id_empleado, salario):
@@ -218,48 +245,69 @@ class Salarios:
 
     @staticmethod
     def _conn():
+        conn = sqlite3.connect(DB_NAME)
         conn.row_factory = sqlite3.Row
         conn.execute('''
         CREATE TABLE IF NOT EXISTS salarios(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        id_empleado INTEGER NOT NULL,
-        salario REAL NOT NULL,
-        FOREIGN KEY(id_empleado) REFERENCES empleados(id))
-                     ''')
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_empleado INTEGER NOT NULL,
+            salario REAL NOT NULL,
+            FOREIGN KEY(id_empleado) REFERENCES empleados(id)
+        )
+        ''')
         conn.commit()
         return conn
 
     def agregar_salario(self):
-        with self._conn() as cursor:
-            cursor.execute(
-                "INSERT INTO salarios(id_empleado, salario) VALUES (?, ?)",
-                (self.id_empleado, self.salario)
-            )
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO salarios(id_empleado, salario) VALUES (?, ?)",
+            (self.id_empleado, self.salario)
+        )
+        conn.commit()
+        conn.close()
 
     @staticmethod
     def modificar_salario(id_empleado, nuevo_salario):
-        try:
-            with Salarios._conn() as cursor:
-                cur = cursor.execute("SELECT * FROM salarios WHERE id_empleado = ?", (id_empleado,))
-                conn.execute(
-                    "UPDATE salarios SET salario = ? WHERE id_empleado = ?",
-                    (id_empleado, nuevo_salario)
-                )
-                messagebox.showinfo("Éxito", "El salario se modificó correctamente")
-        except ValueError as e:
-            messagebox.showerror("Error", str(e))
+        conn = Salarios._conn()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM salarios WHERE id_empleado = ?", (id_empleado,))
+        fila = cur.fetchone()
+        if not fila:
+            conn.close()
+            messagebox.showerror("Error", "No se encontró el salario del empleado")
+            return
+        cur.execute(
+            "UPDATE salarios SET salario = ? WHERE id_empleado = ?",
+            (nuevo_salario, id_empleado)
+        )
+        conn.commit()
+        conn.close()
+        messagebox.showinfo("Éxito", "El salario se modificó correctamente")
 
     @staticmethod
     def mostrar_salario(id_empleado):
-        with Salarios._conn() as cursor:
-            cur = cursor.execute("SELECT * FROM salarios WHERE id_empleado = ?", (id_empleado,))
-            fila = cur.fetchone()
+        conn = Salarios._conn()
+        cur = conn.cursor()
+        cur.execute("SELECT salario FROM salarios WHERE id_empleado = ?", (id_empleado,))
+        fila = cur.fetchone()
+        conn.close()
+        if fila:
             return fila['salario']
+        else:
+            return 0.0
 
     @staticmethod
     def eliminar(id_empleado):
-        with Salarios._conn() as cursor:
-            cursor.execute("DELETE FROM salarios WHERE id_empleado = ?", (id_empleado,))
+        conn = Salarios._conn()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM salarios WHERE id_empleado = ?", (id_empleado,))
+        if cur.rowcount == 0:
+            conn.close()
+            return
+        conn.commit()
+        conn.close()
 
 class Tareas:
     def __init__(self, id_empleado, corte, bandos, operacion, fecha):
@@ -384,12 +432,13 @@ class Cuentas:
                                  (usuario, password)).fetchone()
             if not cur:
                 raise ValueError("Usuario o contraseña incorrectos!")
-            return {cur['rol']}
+            return cur['rol']
 
     @staticmethod
     def eliminar(id_empleado):
         with Cuentas._conn() as cursor:
             cur = cursor.execute("DELETE FROM cuentas WHERE id_empleado = ?", (id_empleado,))
+
 
 class InterfazGrafica:
     def __init__(self):
@@ -419,6 +468,14 @@ class InterfazGrafica:
     def limpiar_contenedor(self):
         for widget in self.contenedor.winfo_children():
             widget.destroy()
+
+    def crear_cabecera_submenu(self, titulo):
+        cabecera = tk.Frame(self.contenedor, bg='#0078D7', height=80)
+        cabecera.pack(fill='x')
+        cabecera.pack_propagate(False)
+
+        tk.Label(cabecera, text=titulo,
+                 font=("Arial", 10, "bold"), bg='#0078D7', fg='white').pack(pady=25)
 
     def crear_footer_volver(self, comando_volver):
         pied_pagina = tk.Frame(self.contenedor, bg='white')
@@ -461,14 +518,14 @@ class InterfazGrafica:
         def alternar_password():
             if self.mostrar:
                 self.entry_password.config(show='*')
-                boton_ver.config(text="👁️")
+                boton_ver.config(text="👁️mostrar")
                 self.mostrar = False
             else:
                 self.entry_password.config(show='')
-                boton_ver.config(text="🙈")
+                boton_ver.config(text="🙈ocultar")
                 self.mostrar = True
 
-        boton_ver = tk.Button(frame, text="👁️", bg='white', relief='flat', cursor="hand2",
+        boton_ver = tk.Button(frame, text="👁️mostrar", bg='white', relief='flat', cursor="hand2",
                               command=alternar_password)
         boton_ver.pack(anchor='e', pady=(5, 0))
 
@@ -492,33 +549,44 @@ class InterfazGrafica:
         elif lista_cuentas:
             try:
                 rol = Cuentas.buscar(usuario, password)
-                self.tipo_usuario = rol
+                self.tipo_usuario = str(rol)
                 self.usuario_actual = usuario
-                if self.tipo_usuario == "administrador":
+                if self.tipo_usuario.lower() == "administrador":
                     self.menu_administrador()
                 else:
-                    self.menu_administrador()
+                    self.menu_empleado()
             except ValueError as e:
                 messagebox.showerror("Error", f"Error: {e}")
         else:
             if usuario == "admin" and password == "admin":
-                self.abrir_ventana_cambiar()
+                self.crear_cuenta()
             else:
                 messagebox.showerror("Error", "ERROR: Credenciales incorrectos")
 
-    def abrir_ventana_cambiar(self):
+    def crear_cuenta(self):
         self.limpiar_contenedor()
 
         titulo = tk.Label(self.contenedor, text="Crear cuenta",
                           font=("Arial", 16, "bold"), bg='white')
         titulo.pack(pady=40)
 
-        subtitulo = tk.Label(self.contenedor, text="Actualizar datos\nIngrese nuevos datos para actualizar la cuenta",
+        subtitulo = tk.Label(self.contenedor, text="Ingresar datos\nIngrese nuevos datos para crear la cuenta",
                              font=("Arial", 9), bg='white', fg='gray')
         subtitulo.pack(pady=10)
 
         frame = tk.Frame(self.contenedor, bg="white")
         frame.pack(pady=20, padx=50, fill="x")
+
+        usuario_actual = getattr(self, "tipo_usuario", None)
+
+        if usuario_actual == "administrador":
+            lista_emp = Empleados.listar()
+            tk.Label(frame, text="Seleccione un empleado:", font=("Arial", 10), bg="white").pack(anchor="w", pady=(10, 5))
+            empleados_disp = [f"{e['id']} - {e['nombre']}" for e in lista_emp if e['id'] != 1]
+            combo_empleado = ttk.Combobox(frame, values=empleados_disp, state="readonly", font=("Arial", 10))
+            combo_empleado.pack(fill="x", ipady=8, pady=(0, 15))
+        else:
+            combo_empleado = None
 
         tk.Label(frame, text="Nuevo usuario:", font=("Arial", 10), bg="white").pack(anchor="w", pady=(10, 5))
         entry_nuevo_usuario = tk.Entry(frame, font=("Arial", 10), relief="solid", bd=1)
@@ -532,14 +600,14 @@ class InterfazGrafica:
         def alternar_password():
             if self.mostrar:
                 entry_new_pass.config(show='*')
-                boton_ver.config(text="👁️")
+                boton_ver.config(text="👁️mostrar")
                 self.mostrar = False
             else:
                 entry_new_pass.config(show='')
-                boton_ver.config(text="🙈")
+                boton_ver.config(text="🙈ocultar")
                 self.mostrar = True
 
-        boton_ver = tk.Button(frame, text="👁️", bg='white', relief='flat', cursor="hand2",
+        boton_ver = tk.Button(frame, text="👁️mostrar", bg='white', relief='flat', cursor="hand2",
                               command=alternar_password)
         boton_ver.pack(anchor='e', pady=(5, 0))
 
@@ -550,12 +618,31 @@ class InterfazGrafica:
             if nuevo_usuario == "" or new_pass == "":
                 messagebox.showwarning("Campos vacíos", "Por favor complete ambos campos.")
                 return
-            admin = Empleados("admin", 0000, "administrador")
-            admin.guardar()
-            cuenta = Cuentas(1, nuevo_usuario, new_pass, "administrador")
+
+            if usuario_actual == "administrador" and combo_empleado:
+                seleccion = combo_empleado.get()
+                if not seleccion:
+                    messagebox.showwarning("Selección requerida", "Seleccione un empleado para crear la cuenta.")
+                    return
+                id_empleado = seleccion.split(" - ")[0]
+            else:
+                id_empleado = 1
+
+            if not Cuentas.listar():
+                admin = Empleados("admin", 0000, "administrador")
+                admin.guardar()
+
+            cuenta = Cuentas(id_empleado, nuevo_usuario, new_pass, "administrador" if id_empleado == 1 else "empleado")
             cuenta.guardar()
-            self.ventana_login()
-            messagebox.showinfo("Éxito", "Usuario y contraseña actualizados\nInicie sesión nuevamente")
+
+            if usuario_actual is None:
+                self.ventana_login()
+                boton_cancelar.config(command=self.ventana_login)
+            else:
+                self.gestion_empleados()
+                boton_cancelar.config(command=self.gestion_empleados)
+
+            messagebox.showinfo("Éxito", "Usuario y contraseña creada")
 
         boton_guardar = tk.Button(frame, text="Guardar cambios", bg="#0078D7", fg='white',
                                   font=("Arial", 10, "bold"), relief="flat", cursor="hand2",
@@ -567,6 +654,11 @@ class InterfazGrafica:
                                    command=self.ventana_login)
         boton_cancelar.pack(fill="x", ipady=10)
 
+        if usuario_actual is None:
+            boton_cancelar.config(command=self.ventana_login)
+        else:
+            boton_cancelar.config(command=self.gestion_empleados)
+
     def menu_administrador(self):
         self.limpiar_contenedor()
 
@@ -574,7 +666,7 @@ class InterfazGrafica:
         cabecera.pack(fill='x')
         cabecera.pack_propagate(False)
 
-        tk.Label(cabecera, text=f"Bienvendio: {self.tipo_usuario}",
+        tk.Label(cabecera, text=f"Bienvenido: {self.usuario_actual}",
                  font=("Arial", 14, "bold"), bg='#0078D7', fg='white').pack(pady=25)
 
         frame_contenido = tk.Frame(self.contenedor, bg='white')
@@ -650,7 +742,8 @@ class InterfazGrafica:
             ("Registrar empleado", self.registrar_empleado),
             ("Listar empleados", self.listar_empleados),
             ("Despedir empleado", self.despedir_empleado),
-            ("Calcular pago", self.calcular_pago)
+            ("Calcular pago", self.calcular_pago),
+            ("Crear cuenta", self.crear_cuenta)
         ]
 
         for texto, comando in botones:
@@ -683,14 +776,6 @@ class InterfazGrafica:
             btn.pack(fill='x', pady=8, ipady=12)
 
         self.crear_footer_volver(self.menu_administrador)
-
-    def crear_cabecera_submenu(self, titulo):
-        cabecera = tk.Frame(self.contenedor, bg='#0078D7', height=80)
-        cabecera.pack(fill='x')
-        cabecera.pack_propagate(False)
-
-        tk.Label(cabecera, text=titulo,
-                 font=("Arial", 10, "bold"), bg='#0078D7', fg='white').pack(pady=25)
 
     def gestion_operaciones(self):
         self.limpiar_contenedor()
@@ -797,60 +882,193 @@ class InterfazGrafica:
             frame = tk.Frame(self.contenedor, bg='white')
             frame.pack(pady=20, padx=20, fill='both', expand=True)
 
-            columnas = ("ID", "Nombre", "Teléfono", "Área", "Salario por hora")
+            columnas = ("ID", "Nombre", "Teléfono", "Área", "Salario por hora", "")
             filas = ttk.Treeview(frame, columns=columnas, show="headings", height=12)
 
-            filas.heading("ID", text='ID')
-            filas.heading("Nombre", text='Nombre')
-            filas.heading("Teléfono", text='Teléfono')
-            filas.heading("Área", text='Área')
-            filas.heading("Salario por hora", text='Salario por hora')
+            for col in columnas:
+                filas.heading(col, text=col)
 
-            filas.column("ID", width=80, anchor="center")
+            filas.column("ID", width=60, anchor="center")
             filas.column("Nombre", width=150)
             filas.column("Teléfono", width=100, anchor='center')
             filas.column("Área", width=100, anchor='center')
-            filas.column("Salario por hora", width=100, anchor='center')
+            filas.column("Salario por hora", width=120, anchor='center')
+            filas.column("", width=100, anchor='center')
 
             for emp in lista_emp:
                 if emp['id'] != 1:
-                    if emp['area'].lower() in ('corte', 'empacar'):
-                        salario = f'{Salarios.mostrar_salario(emp['id']):.2f}'
+                    if emp['area'].lower() in ['corte', 'empacar']:
+                        salario = f"{Salarios.mostrar_salario(emp['id']):.2f}"
                     else:
-                        salario = 'pago por pieza'
+                        salario = "Por pieza"
 
-                    filas.insert('', 'end', values=(emp['id'], emp['nombre'], emp['telefono'], emp['area'], salario))
+                    filas.insert('', 'end', values=(
+                        emp['id'], emp['nombre'], emp['telefono'], emp['area'], salario, "Modificar"
+                    ))
 
             filas.pack(fill='both', expand=True)
 
-            barra_scroll_y = ttk.Scrollbar(frame, orient="vertical", command=filas.yview)
-            barra_scroll_y.pack(side='right', fill='y')
-            filas.configure(yscrollcommand=barra_scroll_y.set)
-            barra_scroll_x = ttk.Scrollbar(frame, orient="horizontal", command=filas.xview)
-            barra_scroll_x.pack(side='bottom', fill='x')
-            filas.configure(xscrollcommand=barra_scroll_x.set)
+            scroll_y = ttk.Scrollbar(frame, orient="vertical", command=filas.yview)
+            scroll_y.pack(side='right', fill='y')
+            filas.configure(yscrollcommand=scroll_y.set)
+
+            scroll_x = ttk.Scrollbar(frame, orient="horizontal", command=filas.xview)
+            scroll_x.pack(side='bottom', fill='x')
+            filas.configure(xscrollcommand=scroll_x.set)
+
+            def al_hacer_click(event):
+                item = filas.identify_row(event.y)
+                columna = filas.identify_column(event.x)
+                if not item or columna != '#6':
+                    return
+                valores = filas.item(item, "values")
+                id_emp = valores[0]
+                self.mostrar_ventana_modificar(id_emp)
+
+            filas.bind("<Button-1>", al_hacer_click)
 
             self.crear_footer_volver(self.gestion_empleados)
+
         except ValueError as e:
             messagebox.showerror("Error", str(e))
+
+    def mostrar_ventana_modificar(self, id_empleado):
+        self.limpiar_contenedor()
+        self.crear_cabecera_submenu("Modificar empleado")
+
+        emp = Empleados.consultar(id_empleado)
+
+        if not emp:
+            messagebox.showerror("Error", "Empleado no encontrado")
+            return
+
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(padx=40, pady=30, fill='both', expand=True)
+
+        tk.Label(frame, text="Nombre:", bg='white').pack(anchor='w')
+        entry_nombre = tk.Entry(frame, font=("Arial", 10))
+        entry_nombre.pack(fill='x', ipady=8, pady=(0, 10))
+        entry_nombre.insert(0, emp['nombre'])
+
+        tk.Label(frame, text="Teléfono:", bg='white').pack(anchor='w')
+        entry_telefono = tk.Entry(frame, font=("Arial", 10))
+        entry_telefono.pack(fill='x', ipady=8, pady=(0, 10))
+        entry_telefono.insert(0, emp['telefono'])
+
+        tk.Label(frame, text="Área:", bg='white').pack(anchor='w')
+        combo_area = ttk.Combobox(frame, values=["Corte", "Empacar", "Costura"], state="readonly")
+        combo_area.pack(fill='x', ipady=8, pady=(0, 10))
+        combo_area.set(emp['area'])
+
+        label_salario = tk.Label(frame, text="Salario por hora:", bg='white')
+        entry_salario = tk.Entry(frame, font=("Arial", 10))
+
+        salario_actual = Salarios.mostrar_salario(id_empleado)
+        if emp['area'].lower() in ['corte', 'empacar']:
+            label_salario.pack(anchor='w', pady=(10, 2))
+            entry_salario.pack(fill='x', ipady=8, pady=(0, 10))
+            entry_salario.insert(0, salario_actual)
+
+        def actualizar_campos(event):
+            area_sel = combo_area.get().lower()
+            if area_sel in ['corte', 'empacar']:
+                label_salario.pack(anchor='w', pady=(10, 2))
+                entry_salario.pack(fill='x', ipady=8, pady=(0, 10))
+            else:
+                label_salario.pack_forget()
+                entry_salario.pack_forget()
+
+        combo_area.bind("<<ComboboxSelected>>", actualizar_campos)
+
+        def guardar_cambios():
+            nombre = entry_nombre.get().strip()
+            telefono = entry_telefono.get().strip()
+            area = combo_area.get()
+
+            if not nombre or not telefono or not area:
+                messagebox.showerror("Error", "Complete todos los campos")
+                return
+
+            try:
+                if len(telefono) != 8:
+                    messagebox.showerror("Error", "El número de teléfono debe ser de 8 dígitos")
+                    return
+                telefono = int(telefono)
+            except ValueError:
+                messagebox.showerror("Error", "Número de teléfono no válido")
+                return
+
+            try:
+                Empleados.modificar(id_empleado, nombre, telefono, area)
+
+                if area.lower() in ['corte', 'empacar']:
+                    salario = entry_salario.get().strip()
+                    if not salario:
+                        messagebox.showerror("Error", "Ingrese un salario válido")
+                        return
+                    try:
+                        salario = float(salario)
+                    except ValueError:
+                        messagebox.showerror("Error", "El salario debe ser numérico")
+                        return
+                    Salarios.modificar_salario(id_empleado, salario)
+                else:
+                    Salarios.eliminar(id_empleado)
+
+                messagebox.showinfo("Éxito", "Empleado actualizado correctamente")
+                self.gestion_empleados()
+
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        frame_botones = tk.Frame(frame, bg='white')
+        frame_botones.pack(fill='x', pady=10)
+
+        tk.Button(frame_botones, text="Guardar cambios", bg="#0078D7", fg="white",
+                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                  command=guardar_cambios).pack(side='left', expand=True, fill='x', padx=5, ipady=8)
+
+        tk.Button(frame_botones, text="Cancelar", bg="#FF8C00", fg="white",
+                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                  command=self.listar_empleados).pack(side='left', expand=True, fill='x', padx=5, ipady=8)
 
     def despedir_empleado(self):
         self.limpiar_contenedor()
         self.crear_cabecera_submenu("Despedir empleado")
 
         try:
-            lista_emp = []
-            for emp in Empleados.listar():
-                if emp['id'] != 1:
-                    lista_emp.append(emp['nombre'])
+            lista_emp = Empleados.listar()
 
             frame = tk.Frame(self.contenedor, bg='white')
             frame.pack(pady=20, padx=40, fill='both', expand=True)
 
-            tk.Label(frame, text="Empleado:", font=("Arial", 10), bg='white', fg='gray').pack(anchor='w', pady=(10, 2))
-            seleccion_empleado = ttk.Combobox(frame, values=lista_emp, state='readonly', font=("Arial", 10))
-            seleccion_empleado.pack(fill='x', ipady=8, pady=(5, 15))
+            tk.Label(frame, text="Seleccione un empleado:", font=("Arial", 10),
+                     bg='white', fg='gray').pack(anchor='w', pady=(10, 2))
+            nombres = [f"{e['id']} - {e['nombre']}" for e in lista_emp if e['id'] != 1]
 
+            seleccion_empleado = ttk.Combobox(frame, values=nombres, state="readonly", font=("Arial", 10))
+            seleccion_empleado.pack(fill='x', ipady=8, pady=(5, 20))
+
+            def despedir():
+                seleccion = seleccion_empleado.get()
+                if not seleccion:
+                    messagebox.showerror("Error", "Seleccione un empleado")
+                    return
+
+                id_emp = seleccion.split(" - ")[0]
+                Empleados.eliminar(id_emp)
+                Salarios.eliminar(id_emp)
+
+            frame_btns = tk.Frame(frame, bg='white')
+            frame_btns.pack(side='bottom', fill='x', pady=20)
+
+            tk.Button(frame_btns, text="Despedir", bg="#FF8C00", fg="white",
+                      font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                      command=despedir).pack(side='left', expand=True, fill='x', padx=5, ipady=8)
+
+            tk.Button(frame_btns, text="Cancelar", bg="#0078D7", fg="white",
+                      font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                      command=self.gestion_empleados).pack(side='left', expand=True, fill='x', padx=5, ipady=8)
 
         except ValueError as e:
             messagebox.showerror("Error", str(e))
