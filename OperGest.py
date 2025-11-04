@@ -1,5 +1,5 @@
 import sqlite3
-import datetime
+from datetime import datetime
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -368,24 +368,79 @@ class Tareas:
         with Tareas._conn() as cursor:
             cursor.execute("DELETE FROM tareas WHERE id_empleado", (id_empleado,))
 
+
 class Reportes:
-    def __init__(self, id_tarea):
+    def __init__(self, id_tarea, fecha, estado):
         self.id_tarea = id_tarea
+        self.fecha = fecha
+        self.estado = estado
 
     @staticmethod
-    def __conn():
+    def _conn():
         conn.row_factory = sqlite3.Row
         conn.execute('''
         CREATE TABLE IF NOT EXISTS reportes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        id_tarea INTEGER NOT NULL,
-        FOREIGN KEY(id_tarea) REFERENCES tareas(id))
-                     ''')
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_tarea INTEGER NOT NULL,
+            fecha TEXT NOT NULL,
+            estado TEXT NOT NULL,
+            FOREIGN KEY(id_tarea) REFERENCES tareas(id)
+        )
+        ''')
         conn.commit()
         return conn
 
     def guardar(self):
-        pass
+        with self._conn() as cursor:
+            cursor.execute(
+                "INSERT INTO reportes(id_tarea, fecha, estado) VALUES (?, ?, ?)",
+                (self.id_tarea, self.fecha, self.estado)
+            )
+
+    @staticmethod
+    def listar():
+        with Reportes._conn() as cursor:
+            datos = cursor.execute(
+                '''SELECT r.id, t.id_empleado, t.corte, t.bandos, t.operacion, 
+                          r.fecha, r.estado
+                   FROM reportes r 
+                   INNER JOIN tareas t ON r.id_tarea = t.id'''
+            ).fetchall()
+            return datos
+
+    @staticmethod
+    def eliminar(id_reporte):
+        with Reportes._conn() as cursor:
+            cursor.execute("DELETE FROM reportes WHERE id = ?", (id_reporte,))
+
+    @staticmethod
+    def buscar_por_empleado(id_empleado):
+        with Reportes._conn() as cursor:
+            datos = cursor.execute(
+                '''SELECT r.id, t.id_empleado, t.corte, t.bandos, t.operacion, 
+                          r.fecha, r.estado
+                   FROM reportes r 
+                   INNER JOIN tareas t ON r.id_tarea = t.id
+                   WHERE t.id_empleado = ?''',
+                (id_empleado,)
+            ).fetchall()
+            return datos
+
+    @staticmethod
+    def registrar_tarea(id_tarea):
+        with Reportes._conn() as cursor:
+            tarea = cursor.execute("SELECT * FROM tareas WHERE id = ?", (id_tarea,)).fetchone()
+            if tarea is None:
+                raise ValueError("La tarea no existe o ya fue procesada.")
+
+            fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            estado = "Completada"
+            cursor.execute(
+                "INSERT INTO reportes(id_tarea, fecha, estado) VALUES (?, ?, ?)",
+                (id_tarea, fecha, estado)
+            )
+            cursor.execute("DELETE FROM tareas WHERE id = ?", (id_tarea,))
+
 
 class Cuentas:
     def __init__(self, id_empleado, usuario, password, rol):
@@ -679,6 +734,7 @@ class InterfazGrafica:
             ("👥 Gestión de Empleados", self.gestion_empleados),
             ("📦 Gestión de Pedidos", self.gestion_pedidos),
             ("⚙️ Gestión de Operaciones", self.gestion_operaciones),
+            ("✍️ Gestión de Tareas", self.gestion_tareas)
         ]
 
         for texto, comando in botones:
@@ -730,6 +786,7 @@ class InterfazGrafica:
                                  command=self.cerrar_sesion)
         boton_cerrar.pack(fill='x', ipady=10)
 
+    #===Ventanas de submenú===
     def gestion_empleados(self):
         self.limpiar_contenedor()
 
@@ -763,10 +820,9 @@ class InterfazGrafica:
         frame_contenido.pack(fill='both', expand=True, padx=40, pady=30)
 
         botones = [
-            ("Registrar operación", self.registrar_operacion),
-            ("Listar operaciones", self.listar_operaciones),
-            ("Asignar tarea", self.asignar_tarea),
-            ("Consultar operación", self.consultar_operacion)
+            ("Registrar corte", self.registrar_corte),
+            ("Ver cortes en proceso", self.listar_pedidos),
+            ("Consultar operación", self.consultar_operacion_realizada)
         ]
 
         for texto, comando in botones:
@@ -787,8 +843,8 @@ class InterfazGrafica:
 
         botones = [
             ("Registrar operación", self.registrar_operacion),
-            ("Consultar operación", self.listar_operaciones),
-            ("Asignar tarea", self.asignar_tarea)
+            ("Consultar operación", self.consultar_operacion),
+            ("Lista de operaciones", self.listar_operaciones)
         ]
 
         for texto, comando in botones:
@@ -796,6 +852,28 @@ class InterfazGrafica:
                               font=("Arial", 11, "bold"), relief='flat', cursor="hand2",
                               command=comando)
             boton.pack(fill='x', pady=8, ipady=12)
+
+        self.crear_footer_volver(self.menu_administrador)
+
+    def gestion_tareas(self):
+        self.limpiar_contenedor()
+
+        self.crear_cabecera_submenu("✍️ Gestión de Tareas")
+
+        frame_contenido = tk.Frame(self.contenedor, bg='white')
+        frame_contenido.pack(fill='both', expand=True, padx=40, pady=30)
+
+        botones = [
+            ("Asignar Tareas", self.asignar_tareas),
+            ("Lista de tareas", self.lista_tareas),
+            ("Ver reportes", self.ver_reportes)
+        ]
+
+        for texto, comando in botones:
+            btn = tk.Button(frame_contenido, text=texto, bg="#0078D7", fg="white",
+                            font=("Arial", 11, "bold"), relief='flat', cursor="hand2",
+                            command=comando)
+            btn.pack(fill='x', pady=8, ipady=12)
 
         self.crear_footer_volver(self.menu_administrador)
 
@@ -1073,11 +1151,23 @@ class InterfazGrafica:
         except ValueError as e:
             messagebox.showerror("Error", str(e))
 
-    def calcular_pago(self):
+    def pagar(self):
         pass
+
+    #=====GESTIÓN PEDIDOS=====
+    def registrar_corte(self):
+        pass
+
+    def listar_pedidos(self):
+        pass
+
+    def consultar_operacion_realizada(self):
+        pass
+
 
     def ejecutar(self):
         self.root.mainloop()
+
 
 if __name__ == "__main__":
     app = InterfazGrafica()

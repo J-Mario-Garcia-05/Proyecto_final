@@ -4,10 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c941d9b-e205-4869-af9a-ccf5ea61629d" name="Changes" comment="Agregar listar emplados">
+    <list default="true" id="6c941d9b-e205-4869-af9a-ccf5ea61629d" name="Changes" comment="Boton modificar, crear cuenta emp">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/OperGest.py" beforeDir="false" afterPath="$PROJECT_DIR$/OperGest.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/registros.db" beforeDir="false" afterPath="$PROJECT_DIR$/registros.db" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -24,18 +23,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "J-Mario-Garcia-05"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;J-Mario-Garcia-05&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/J-Mario-Garcia-05/Proyecto_final.git",
-    "accountId": "61b81bc9-3e8d-4d8b-bc59-3ce3e9480c14"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/J-Mario-Garcia-05/Proyecto_final.git&quot;,
+    &quot;accountId&quot;: &quot;61b81bc9-3e8d-4d8b-bc59-3ce3e9480c14&quot;
   }
-}]]></component>
+}</component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 0
 }</component>
@@ -82,7 +81,8 @@
       <workItem from="1761018732981" duration="4522000" />
       <workItem from="1761098777205" duration="39447000" />
       <workItem from="1761581168478" duration="8404000" />
-      <workItem from="1761754076163" duration="16487000" />
+      <workItem from="1761754076163" duration="25012000" />
+      <workItem from="1762224131411" duration="721000" />
     </task>
     <task id="LOCAL-00001" summary="Tablas pedido, operaciones, empleados">
       <option name="closed" value="true" />
@@ -132,7 +132,15 @@
       <option name="project" value="LOCAL" />
       <updated>1761757820411</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="Boton modificar, crear cuenta emp">
+      <option name="closed" value="true" />
+      <created>1761964834844</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1761964834844</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -145,9 +153,10 @@
     <MESSAGE value="Corregir ventana login" />
     <MESSAGE value="Agregar ventana registrar emp" />
     <MESSAGE value="Agregar listar emplados" />
-    <option name="LAST_COMMIT_MESSAGE" value="Agregar listar emplados" />
+    <MESSAGE value="Boton modificar, crear cuenta emp" />
+    <option name="LAST_COMMIT_MESSAGE" value="Boton modificar, crear cuenta emp" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/Proyecto_final$OperGest.coverage" NAME="OperGest Coverage Results" MODIFIED="1761964544584" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/Proyecto_final$OperGest.coverage" NAME="OperGest Coverage Results" MODIFIED="1761968351348" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>
