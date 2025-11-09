@@ -22,21 +22,21 @@ class Pedidos:
 
     @staticmethod
     def _conn():
-        with Conexion.get_conn() as conn:
-            c = conn.cursor()
-
-            c.execute('''
-            CREATE TABLE IF NOT EXISTS pedidos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                marca TEXT NOT NULL,
-                categoria TEXT NOT NULL,
-                color TEXT NOT NULL,
-                cantidad INTEGER DEFAULT 0,
-                estado TEXT DEFAULT "En proceso"
-            )
-            ''')
-            conn.commit()
-            return conn
+        conn = Conexion.get_conn()
+        c = conn.cursor()
+        c.execute('''
+                  CREATE TABLE IF NOT EXISTS pedidos
+                  (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      marca TEXT NOT NULL,
+                      categoria TEXT NOT NULL,
+                      color TEXT NOT NULL,
+                      cantidad INTEGER DEFAULT 0,
+                      estado TEXT DEFAULT 'en proceso'
+                  )
+                  ''')
+        conn.commit()
+        return conn
 
     def guardar(self):
         with self._conn() as conn:
@@ -45,6 +45,7 @@ class Pedidos:
                 'INSERT INTO pedidos (marca, categoria, color) VALUES (?, ?, ?)',
                 (self.marca, self.categoria, self.color)
             )
+            conn.commit()  # ← se guarda bien ahora
             id_generado = c.lastrowid
             messagebox.showinfo("Éxito", "Pedido registrado correctamente")
             return id_generado
@@ -55,20 +56,37 @@ class Pedidos:
             c = conn.cursor()
             c.execute(
                 '''UPDATE pedidos 
-                   SET cantidad = (SELECT COALESCE(SUM(cantidad),0) FROM bandos WHERE corte = ?) 
-                   WHERE id = ?''',
-                (corte_id, corte_id)
+                   SET cantidad = (SELECT COALESCE(SUM(cantidad),0) FROM bandos WHERE corte = ?)''',
+                (corte_id,)
             )
 
     @staticmethod
     def listar():
+        conn = Pedidos._conn()
+        c = conn.cursor()
+        c.execute("SELECT id, marca, categoria, color FROM pedidos")
+        pedidos = c.fetchall()
+        conn.close()
+
+        if not pedidos:
+            raise ValueError("No hay pedidos en proceso registrados.")
+        return pedidos
+
+    @staticmethod
+    def buscar(id_corte):
+        with Pedidos._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            cur = c.execute("SELECT * FROM pedidos WHERE id = ?", (id_corte,))
+            return cur.fetchone()
+
+    @staticmethod
+    def actualizar_estado(id_corte, nuevo_estado):
         with Pedidos._conn() as conn:
             c = conn.cursor()
-            cur = c.execute('SELECT * FROM pedidos')
-            pedidos = cur.fetchall()
-            if not pedidos:
-                raise ValueError("No hay pedidos registrados")
-            return pedidos
+            c.execute("UPDATE pedidos SET estado = ? WHERE id = ?", (nuevo_estado, id_corte))
+            conn.commit()
+
 
 class TallasCorte:
     def __init__(self, corte, talla, cantidad):
@@ -118,6 +136,13 @@ class TallasCorte:
             if not tallas:
                 raise ValueError("El corte no tiene tallas registradas.")
             return [fila[2] for fila in tallas]
+
+    @staticmethod
+    def obtener_tallas_cantidades(corte):
+        with TallasCorte._conn() as conn:
+            c = conn.cursor()
+            datos = c.execute("SELECT talla, cantidad_max FROM tallas_corte WHERE corte=?", (corte,)).fetchall()
+            return {t: cant for t, cant in datos}
 
 
 class Bandos:
@@ -180,7 +205,7 @@ class Bandos:
                                       f"\nTalla {self.talla}: {self.cantidad} unidades.")
 
     @staticmethod
-    def obtener_bandos_corte(corte):
+    def obtener_num_bandos_corte(corte):
         with Bandos._conn() as conn:
             c = conn.cursor()
             cur = c.execute('SELECT * FROM bandos WHERE corte = ?', (corte,))
@@ -188,6 +213,13 @@ class Bandos:
             if not bandos:
                 return "sin bandos"
             return bandos
+
+    @staticmethod
+    def obtener_bandos_corte(corte):
+        with Bandos._conn() as conn:
+            c = conn.cursor()
+            datos = c.execute("SELECT id, talla, cantidad FROM bandos WHERE corte=?", (corte,)).fetchall()
+            return [{"id": b, "talla": t, "cantidad": cant} for b, t, cant in datos]
 
 
 class Operaciones:
@@ -217,26 +249,47 @@ class Operaciones:
             )
 
     @staticmethod
-    def modificar(id):
+    def listar():
+        conn = Operaciones._conn()
+        cursor = conn.cursor()
+        operaciones = cursor.execute("SELECT * FROM operaciones").fetchall()
+        conn.close()
+
+        if not operaciones:
+            raise ValueError("No hay operaciones registradas.")
+        return operaciones
+
+    @staticmethod
+    def buscar(id):
+        with Operaciones._conn() as cursor:
+            operacion = cursor.execute('SELECT * FROM operaciones Where id = ?', (id,)).fetchone()
+            if not operacion:
+                raise ValueError("No se encontró ninguna operación.")
+            return operacion
+
+    @staticmethod
+    def modificar(id, nombre, small_price, big_price):
         with Operaciones._conn() as cursor:
             cur = cursor.execute('SELECT * FROM operaciones WHERE id = ?', (id,))
             fila = cur.fetchone()
             if not fila:
                 raise ValueError("No se encontró ninguna operación con ese nombre!")
-            nombre = input(f"Actualizar nombre [{fila['nombre']}]: ") or fila['nombre']
-            small_price = input(f"Actualizar precio talla pequeña [{fila['small_price']}]: ") or fila['small_price']
-            big_price = input(f"Actualziar precio talla grande [{fila['big_price']}]: ") or fila['big_price']
             cursor.execute(
-                "UPDATE pedidos SET nombre, small_price, big_price = ? WHERE id = ?",
+                "UPDATE operaciones SET nombre = ?, small_price = ?, big_price = ? WHERE id = ?",
                 (nombre, small_price, big_price, id)
             )
+        messagebox.showinfo("Éxito", "Se guradaron los cambios correctamente")
 
     @staticmethod
     def eliminar(id):
-        with Operaciones._conn() as cursor:
-            cur = cursor.execute('DELETE FROM operaciones WHERE nombre = ?', (id,))
-            if cur.rowcount:
-                raise ValueError("No se encontró ninguna operación con el nombre ingresado!")
+        conn = Operaciones._conn()
+        cursor = conn.cursor()
+        cur = cursor.execute('DELETE FROM operaciones WHERE id = ?', (id,))
+        if cur.rowcount == 0:
+            raise ValueError("No se encontró ninguna operación con el nombre ingresado!")
+        conn.commit()
+        conn.close()
+        messagebox.showinfo("Éxito", "Se eliminaron los datos de la operación.")
 
 
 class Empleados:
@@ -269,6 +322,17 @@ class Empleados:
         conn.commit()
         conn.close()
 
+    def obtener_id(self):
+        conn = self._conn()
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM empleados WHERE nombre = ?', (self.nombre,))
+        fila = cur.fetchone()
+        conn.close()
+        if not fila:
+            raise ValueError("No se encontró a ningún empleado")
+        else:
+            return fila['id']
+
     @staticmethod
     def listar():
         conn = Empleados._conn()
@@ -287,20 +351,18 @@ class Empleados:
         cur.execute('SELECT * FROM empleados WHERE id = ?', (id_empleado,))
         empleado = cur.fetchone()
         if not empleado:
-            messagebox.showerror("Error", "No se encontró a ningpun empleado")
-        else:
-            return empleado
+            raise ValueError("No se encontró a ningpun empleado")
+        return empleado
 
-    def obtener_id(self):
-        conn = self._conn()
+    @staticmethod
+    def buscar_empleado_costura():
+        conn = Empleados._conn()
         cur = conn.cursor()
-        cur.execute('SELECT * FROM empleados WHERE nombre = ?', (self.nombre,))
-        fila = cur.fetchone()
-        conn.close()
-        if not fila:
-            messagebox.showerror("Error", "No se encontró a ningún empleado")
-        else:
-            return fila['id']
+        cur.execute("SELECT id, nombre FROM empleados WHERE area = 'Costura'")
+        empleados_costura = cur.fetchall()
+        if not empleados_costura:
+            raise ValueError("No hay empleados en el área de costura")
+        return [f"{e['id']} - {e['nombre']}" for e in empleados_costura]
 
     @staticmethod
     def modificar(id, nombre, telefono, area):
@@ -402,63 +464,62 @@ class Salarios:
         conn.close()
 
 class Tareas:
-    def __init__(self, id_empleado, corte, bandos, operacion, fecha):
+    def __init__(self, id_empleado, corte, bando, operacion, fecha=None):
         self.id_empleado = id_empleado
         self.corte = corte
-        self.bandos = bandos
+        self.bando = bando
         self.operacion = operacion
+        self.fecha = fecha
 
     @staticmethod
     def _conn():
         conn = Conexion.get_conn()
-        conn.execute('''
+        c = conn.cursor()
+        c.execute('''
         CREATE TABLE IF NOT EXISTS tareas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        id_empleado INTEGER NOT NULL,
-        corte INTEGER NOT NULL,
-        bandos INTEGER NOT NULL,
-        operacion INTEGER NOT NULL,
-        FOREIGN KEY(id_empleado) REFERENCES empleados(id),
-        FOREIGN KEY(corte) REFERENCES pedidos(id),
-        FOREIGN KEY(bandos) REFERENCES bandos(id),
-        FOREIGN KEY(operacion) REFERENCES operaciones(id))
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_empleado INTEGER NOT NULL,
+            corte INTEGER NOT NULL,
+            bando TEXT NOT NULL,
+            operacion INTEGER NOT NULL,
+            fecha TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY(id_empleado) REFERENCES empleados(id),
+            FOREIGN KEY(corte) REFERENCES pedidos(id),
+            FOREIGN KEY(bando) REFERENCES bandos(id),
+            FOREIGN KEY(operacion) REFERENCES operaciones(id)
+        )
         ''')
         conn.commit()
         return conn
 
     def guardar(self):
-        with self._conn() as cursor:
-            cursor.execute(
-                "INSERT INTO tareas(id_empleado, corte, bandos, operacion) VALUES (?, ?, ?, ?)",
-                (self.id_empleado, self.corte, self.bandos, self.operacion)
+        with self._conn() as conn:
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO tareas (id_empleado, corte, bando, operacion, fecha) VALUES (?, ?, ?, ?, datetime('now'))",
+                (self.id_empleado, self.corte, self.bando, self.operacion)
             )
+            conn.commit()
+            messagebox.showinfo("Éxito", "Tarea asignada correctamente")
 
     @staticmethod
-    def listar(id_empleado):
-        with Tareas._conn() as cursor:
-            lista = cursor.execute('SELECT * FROM tareas WHERE id_empleado = id_empleado').fetchall()
+    def listar_por_empleado(id_empleado):
+        with Tareas._conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT * FROM tareas WHERE id_empleado = ?", (id_empleado,))
+            lista = c.fetchall()
             if not lista:
                 raise ValueError("No se le han asignado tareas aún.")
-            print("\n--")
+            return lista
 
     @staticmethod
-    def editar(id_empleado):
-        with Tareas._conn() as cursor:
-            Tareas.listar(id_empleado)
-            fila = cursor.execute("SELECT FROM tareas WHERE id_empleado = ? AND id = ?",
-                                  (id_empleado, id)).fetchone()
-            id_empleado = input(f"Actualizar id empleado {fila['id_empleado']}: ") or fila['id_empleado']
-            corte = input(f"Actualizar corte {fila['corte']}: ") or fila['corte']
-            bandos = input(f"Modificar bandos {fila['bandos']}: ") or fila['bandos']
-            cursor.execute(
-                "UPDATE tareas SET id_empleado = ?, corte = ?, bandos = ? WHERE id = ?",
-                (id_empleado, corte, bandos, fila['id'])
-            )
+    def eliminar(id_tarea):
+        with Tareas._conn() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM tareas WHERE id = ?", (id_tarea,))
+            conn.commit()
+            messagebox.showinfo("Éxito", "Tarea eliminada correctamente")
 
-    @staticmethod
-    def eliminar(id_empleado):
-        with Tareas._conn() as cursor:
-            cursor.execute("DELETE FROM tareas WHERE id_empleado", (id_empleado,))
 
 
 class Reportes:
@@ -585,6 +646,38 @@ class Cuentas:
     def eliminar(id_empleado):
         with Cuentas._conn() as cursor:
             cur = cursor.execute("DELETE FROM cuentas WHERE id_empleado = ?", (id_empleado,))
+
+
+class VentanaConfirmacion(tk.Toplevel):
+    def __init__(self, parent, mensaje):
+        super().__init__(parent)
+        self.title("Confirmación")
+        self.geometry("320x150")
+        self.configure(bg='white')
+        self.resizable(False, False)
+        self.resultado = False
+
+        tk.Label(self, text=mensaje, bg='white', fg='black', font=("Arial", 10), wraplength=280, justify="center").pack(pady=20)
+
+        frame_botones = tk.Frame(self, bg='white')
+        frame_botones.pack(pady=10)
+
+        tk.Button(frame_botones, text="Confirmar", bg="#28A745", fg="white", font=("Arial", 9, "bold"),
+                  relief='flat', width=12, command=self.confirmar).pack(side='left', padx=10)
+        tk.Button(frame_botones, text="Cancelar", bg="#DC3545", fg="white", font=("Arial", 9, "bold"),
+                  relief='flat', width=12, command=self.cancelar).pack(side='left', padx=10)
+
+        self.transient(parent)
+        self.grab_set()
+        self.wait_window(self)
+
+    def confirmar(self):
+        self.resultado = True
+        self.destroy()
+
+    def cancelar(self):
+        self.resultado = False
+        self.destroy()
 
 
 class InterfazGrafica:
@@ -880,7 +973,7 @@ class InterfazGrafica:
                                  command=self.cerrar_sesion)
         boton_cerrar.pack(fill='x', ipady=10)
 
-    #===Ventanas de submenú administrador===
+#===Ventanas de submenú administrador===
        #==SUBMENÚ GESTIÓN DE EMPLEADOS===
     def gestion_empleados(self):
         self.limpiar_contenedor()
@@ -941,8 +1034,7 @@ class InterfazGrafica:
 
         botones = [
             ("Registrar operación", self.registrar_operacion),
-            ("Consultar operación", self.consultar_operacion),
-            ("Lista de operaciones", self.listar_operaciones)
+            ("Consultar operación", self.consultar_operacion)
         ]
 
         for texto, comando in botones:
@@ -956,15 +1048,22 @@ class InterfazGrafica:
     #===SUBMENÚ GESTIÓN DE TAREAS===
     def gestion_tareas(self):
         self.limpiar_contenedor()
-
         self.crear_cabecera_submenu("✍️ Gestión de Tareas")
+
+        try:
+            Operaciones.listar()
+            Pedidos.listar()
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
+            self.menu_administrador()
+            return
 
         frame_contenido = tk.Frame(self.contenedor, bg='white')
         frame_contenido.pack(fill='both', expand=True, padx=40, pady=30)
 
         botones = [
             ("Asignar Tareas", self.asignar_tareas),
-            ("Lista de tareas", self.lista_tareas),
+            ("Lista de tareas", self.marcar_tareas),
             ("Ver reportes", self.ver_reportes)
         ]
 
@@ -976,7 +1075,7 @@ class InterfazGrafica:
 
         self.crear_footer_volver(self.menu_administrador)
 
-    #=====VENTANA GESTIÓN EMPLEADOS=====
+    #=====GESTIÓN EMPLEADOS=====
     def registrar_empleado(self):
         self.limpiar_contenedor()
         self.crear_cabecera_submenu("Registrar empleado")
@@ -1261,12 +1360,12 @@ class InterfazGrafica:
         frame = tk.Frame(self.contenedor, bg='white')
         frame.pack(padx=40, pady=20, fill='both', expand=True)
 
-        marcas = ['Pepe', 'Jhon Mike', 'Wrangler', "Levi's"]
+        marcas = ['Pepe', 'Jhon Mike', 'Wrangler', "Levi's", "Lee"]
         tk.Label(frame, text="Marca:", font=("Arial", 10), bg='white', fg='gray').pack(anchor='w', pady=(10, 2))
         seleccion_marca = ttk.Combobox(frame, values=marcas, state="readonly", font=("Arial", 10))
         seleccion_marca.pack(fill='x', ipady=8, pady=(5, 15))
 
-        categorias = ['Dama', 'Niño', 'Caballero']
+        categorias = ['Dama', 'Niño', 'Juvenil', 'Caballero']
         tk.Label(frame, text="Categoría:", font=("Arial", 10), bg='white', fg='gray').pack(anchor='w', pady=(10, 2))
         seleccion_categoria = ttk.Combobox(frame, values=categorias, state="readonly", font=("Arial", 10))
         seleccion_categoria.pack(fill='x', ipady=8, pady=(5, 15))
@@ -1425,7 +1524,7 @@ class InterfazGrafica:
                 messagebox.showwarning("Sin tallas", str(e))
                 return
 
-            bandos_existentes = Bandos.obtener_bandos_corte(id_corte)
+            bandos_existentes = Bandos.obtener_num_bandos_corte(id_corte)
             disponibles = [i for i in range(1, 100) if i not in bandos_existentes]
 
             if not disponibles:
@@ -1554,11 +1653,526 @@ class InterfazGrafica:
                   command=self.gestion_pedidos).pack(side='left', expand=True, fill='x', padx=5, ipady=8)
 
     def listar_pedidos(self):
-        pass
+        self.limpiar_contenedor()
+        self.crear_cabecera_submenu("📋 Cortes en proceso")
+
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(fill='both', expand=True, padx=30, pady=20)
+
+        tk.Label(frame, text="Mostrar por:", bg='white', fg='gray', font=("Arial", 10, "bold")).pack(anchor='w')
+        seleccion_filtro = ttk.Combobox(frame, values=["Tallas", "Bandos"], state="readonly", font=("Arial", 10))
+        seleccion_filtro.current(0)
+        seleccion_filtro.pack(fill='x', pady=(0, 10), ipady=6)
+
+        contenedor_tabla = tk.Frame(frame, bg='white')
+        contenedor_tabla.pack(fill='both', expand=True, pady=10)
+
+        canvas = tk.Canvas(contenedor_tabla, bg='white', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(contenedor_tabla, orient="vertical", command=canvas.yview)
+        scroll_frame = tk.Frame(canvas, bg='white')
+
+        scroll_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        def mostrar_pedidos():
+            for widget in scroll_frame.winfo_children():
+                widget.destroy()
+
+            try:
+                pedidos = Pedidos.listar()
+            except ValueError as e:
+                messagebox.showerror("Error", str(e))
+                self.gestion_pedidos()
+                return
+
+            filtro = seleccion_filtro.get().lower()
+
+            if not pedidos:
+                tk.Label(scroll_frame, text="No hay cortes en proceso.", bg='white', fg='gray').pack(pady=20)
+                return
+
+            for pedido in pedidos:
+                id_corte, marca, categoria, color = pedido[0], pedido[1], pedido[2], pedido[3]
+
+                lf = tk.LabelFrame(scroll_frame, text=f"Corte {id_corte} - {marca} ({categoria}) - {color}",
+                                   font=("Arial", 10, "bold"), bg='white', fg='gray')
+                lf.pack(fill='x', padx=10, pady=8, ipadx=10, ipady=5)
+
+                encabezado = tk.Frame(lf, bg="#F0F0F0")
+                encabezado.pack(fill='x', pady=(0, 5))
+                if filtro == "tallas":
+                    columnas = ["Talla", "Cantidad"]
+                else:
+                    columnas = ["Bando", "Talla", "Cantidad"]
+
+                for c in columnas:
+                    tk.Label(encabezado, text=c, bg="#F0F0F0", font=("Arial", 9, "bold"), width=15).pack(side='left')
+
+                if filtro == "tallas":
+                    tallas = TallasCorte.obtener_tallas_cantidades(id_corte)
+                    total_tallas = 0
+                    for t, cant in tallas.items():
+                        fila = tk.Frame(lf, bg='white')
+                        fila.pack(fill='x')
+                        tk.Label(fila, text=t, width=15, bg='white').pack(side='left')
+                        tk.Label(fila, text=cant, width=15, bg='white').pack(side='left')
+                        total_tallas += cant
+
+                    tk.Label(lf, text=f"Cantidad total: {total_tallas}", bg='white',
+                             fg='black', font=("Arial", 9, "bold")).pack(anchor='e', pady=(5, 0))
+
+                else:
+                    bandos = Bandos.obtener_bandos_corte(id_corte)
+                    total_bandos = 0
+                    contador_bando = 1
+                    for b in bandos:
+                        f = tk.Frame(lf, bg='white')
+                        f.pack(fill='x')
+                        tk.Label(f, text=f"Bando {contador_bando}", width=15, bg='white').pack(side='left')
+                        tk.Label(f, text=b["talla"], width=15, bg='white').pack(side='left')
+                        tk.Label(f, text=b["cantidad"], width=15, bg='white').pack(side='left')
+                        total_bandos += b["cantidad"]
+                        contador_bando += 1
+
+                    tallas = TallasCorte.obtener_tallas_cantidades(id_corte)
+
+                    faltantes_por_talla = {}
+                    for t, cant_talla in tallas.items():
+                        cantidad_bandos_talla = sum(b["cantidad"] for b in bandos if b["talla"] == t)
+                        if cantidad_bandos_talla < cant_talla:
+                            faltantes_por_talla[t] = cant_talla - cantidad_bandos_talla
+
+                    frame_total = tk.Frame(lf, bg='white')
+                    frame_total.pack(fill='x', pady=(5, 0))
+
+                    tk.Label(frame_total, text=f"cantridad total: {total_bandos}",
+                             bg='white', fg='black', font=("Arial", 9, "bold")).pack(side='left', padx=(10, 0))
+
+                    if faltantes_por_talla:
+                        detalles = ", ".join([f"Talla {t} ({f})" for t, f in faltantes_por_talla.items()])
+                        tk.Label(frame_total,
+                                 text=f"⚠Faltan: {detalles}",
+                                 bg='white', fg='red', font=("Arial", 9, "bold"),
+                                 wraplength=400, justify='left').pack(side='left', padx=10)
+
+        mostrar_pedidos()
+        seleccion_filtro.bind("<<ComboboxSelected>>", lambda e: mostrar_pedidos())
+
+        self.crear_footer_volver(self.gestion_pedidos)
 
     def entregar_pedido(self):
+        self.limpiar_contenedor()
+        self.crear_cabecera_submenu("🚚 Entregar Pedido")
+
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(padx=40, pady=30, fill='both', expand=True)
+
+        # --- Label y ComboBox para seleccionar corte ---
+        tk.Label(frame, text="Seleccionar corte:", font=("Arial", 10), bg='white', fg='gray').pack(anchor='w',
+                                                                                                   pady=(10, 2))
+
+        pedidos = Pedidos.listar()
+        if not pedidos:
+            tk.Label(frame, text="No hay cortes registrados.", bg='white', fg='gray').pack(pady=20)
+            self.crear_footer_volver(self.gestion_pedidos)
+            return
+
+        lista_cortes = [f"Corte {p[0]} - {p[1]} - {p[2]} - {p[3]}" for p in pedidos]
+        seleccion_corte = ttk.Combobox(frame, values=lista_cortes, state='readonly', font=("Arial", 10))
+        seleccion_corte.pack(fill='x', ipady=8, pady=(5, 15))
+
+        lbl_estado = tk.Label(frame, text="", bg='white', fg='gray', font=("Arial", 10))
+        lbl_estado.pack(anchor='w', pady=(5, 20))
+
+        def actualizar_estado(event=None):
+            valor = seleccion_corte.get()
+            if not valor:
+                lbl_estado.config(text="")
+                return
+            id_corte = int(valor.split()[1])
+            pedido = Pedidos.buscar(id_corte)
+            if pedido:
+                lbl_estado.config(text=f"Estado actual: {pedido['estado']}")
+            else:
+                lbl_estado.config(text="Estado no disponible.")
+
+        seleccion_corte.bind("<<ComboboxSelected>>", actualizar_estado)
+
+        def entregar():
+            valor = seleccion_corte.get()
+            if not valor:
+                messagebox.showwarning("Seleccionar corte", "Seleccione un corte para entregar.")
+                return
+            id_corte = int(valor.split()[1])
+            pedido = Pedidos.buscar(id_corte)
+            if not pedido:
+                messagebox.showerror("Error", "No se encontró el corte seleccionado.")
+                return
+
+            if pedido['estado'] == 'entregado':
+                messagebox.showinfo("Información", "Este pedido ya fue entregado.")
+                return
+
+            Pedidos.actualizar_estado(id_corte, "entregado")
+            messagebox.showinfo("Éxito", f"Corte {id_corte} entregado correctamente.")
+            self.entregar_pedido()
+
+        frame_btns = tk.Frame(frame, bg='white')
+        frame_btns.pack(side='bottom', fill='x', pady=20)
+
+        tk.Button(frame_btns, text="Entregar", bg="#FF8C00", fg="white",
+                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                  command=entregar).pack(side='left', expand=True, fill='x', padx=5, ipady=8)
+
+        tk.Button(frame_btns, text="Regresar", bg="#0078D7", fg="white",
+                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                  command=self.gestion_pedidos).pack(side='left', expand=True, fill='x', padx=5, ipady=8)
+
+    #====GESTIÓN OPERACIONES====
+    def registrar_operacion(self):
+        self.limpiar_contenedor()
+        self.crear_cabecera_submenu("🧮 Registrar Operación")
+
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(padx=40, pady=30, fill='both', expand=True)
+
+        tk.Label(frame, text="Nombre de la operación:", bg='white', fg='gray', anchor='w', font=("Arial", 10)).pack(
+            fill='x', pady=(5, 2))
+        entry_nombre = tk.Entry(frame, font=("Arial", 10))
+        entry_nombre.pack(fill='x', ipady=8, pady=(0, 10))
+
+        tk.Label(frame, text="Precio talla pequeña:", bg='white', fg='gray', anchor='w', font=("Arial", 10)).pack(
+            fill='x', pady=(5, 2))
+        entry_small = tk.Entry(frame, font=("Arial", 10))
+        entry_small.pack(fill='x', ipady=8, pady=(0, 10))
+
+        tk.Label(frame, text="Precio talla grande:", bg='white', fg='gray', anchor='w', font=("Arial", 10)).pack(
+            fill='x', pady=(5, 2))
+        entry_big = tk.Entry(frame, font=("Arial", 10))
+        entry_big.pack(fill='x', ipady=8, pady=(0, 20))
+
+        def guardar_operacion():
+            nombre = entry_nombre.get().strip()
+            small = entry_small.get().strip()
+            big = entry_big.get().strip()
+
+            if not nombre or not small or not big:
+                messagebox.showwarning("Campos incompletos", "Por favor complete todos los campos.")
+                return
+
+            try:
+                small_price = float(small)
+                big_price = float(big)
+            except ValueError:
+                messagebox.showerror("Error", "Los precios deben ser números.")
+                return
+
+            nueva_op = Operaciones(nombre, small_price, big_price)
+            nueva_op.guardar()
+            messagebox.showinfo("Éxito", f"Operación '{nombre}' registrada correctamente.")
+            entry_nombre.delete(0, tk.END)
+            entry_small.delete(0, tk.END)
+            entry_big.delete(0, tk.END)
+
+        frame_btns = tk.Frame(frame, bg='white')
+        frame_btns.pack(side='bottom', fill='x', pady=20)
+
+        tk.Button(frame_btns, text="Guardar", bg="#FF8C00", fg="white",
+                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                  command=guardar_operacion).pack(side='left', expand=True, fill='x', padx=5, ipady=8)
+
+        tk.Button(frame_btns, text="Regresar", bg="#0078D7", fg="white",
+                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                  command=self.gestion_operaciones).pack(side='left', expand=True, fill='x', padx=5, ipady=8)
+
+    def consultar_operacion(self):
+        self.limpiar_contenedor()
+        self.crear_cabecera_submenu("🔍 Consultar Operaciones")
+
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(padx=30, pady=20, fill='both', expand=True)
+
+        try:
+            operaciones = Operaciones.listar()
+        except ValueError as e:
+            messagebox.showwarning("Sin registros", str(e))
+            self.gestion_operaciones()
+            return
+
+        tk.Label(frame, text="Seleccionar operación:", bg='white', fg='gray', font=("Arial", 10, "bold")).pack(
+            anchor='w')
+        opciones = ["Mostrar todo"] + [op[1] for op in operaciones]
+        seleccion = ttk.Combobox(frame, values=opciones, state="readonly", font=("Arial", 10))
+        seleccion.current(0)
+        seleccion.pack(fill='x', pady=(0, 15), ipady=5)
+
+        contenedor_scroll = tk.Frame(frame, bg='white')
+        contenedor_scroll.pack(fill='both', expand=True)
+
+        canvas = tk.Canvas(contenedor_scroll, bg='white', highlightthickness=0)
+        canvas.pack(side='left', fill='both', expand=True)
+
+        scroll_y = tk.Scrollbar(contenedor_scroll, orient='vertical', command=canvas.yview)
+        scroll_y.pack(side='right', fill='y')
+
+        scroll_x = tk.Scrollbar(frame, orient='horizontal', command=canvas.xview)
+        scroll_x.pack(fill='x')
+
+        canvas.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+        canvas.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        contenedor_tabla = tk.Frame(canvas, bg='white')
+        canvas.create_window((0, 0), window=contenedor_tabla, anchor='nw')
+
+        def mostrar_resultados():
+            for w in contenedor_tabla.winfo_children():
+                w.destroy()
+
+            try:
+                operaciones = Operaciones.listar()
+            except ValueError as e:
+                messagebox.showwarning("Sin registros", str(e))
+                self.gestion_operaciones()
+                return
+
+            filtro = seleccion.get()
+            if filtro == "Mostrar todo":
+                datos = operaciones
+            else:
+                datos = [op for op in operaciones if op[1] == filtro]
+
+            encabezado = tk.Frame(contenedor_tabla, bg="#E9ECEF")
+            encabezado.pack(fill='x', pady=(0, 5))
+
+            columnas = ["ID", "Nombre", "Precio Pequeña", "Precio Grande", "Acciones"]
+            anchos = [8, 25, 18, 18, 25]
+
+            for c, w in zip(columnas, anchos):
+                tk.Label(encabezado, text=c, font=("Arial", 9, "bold"), bg="#E9ECEF",
+                         width=w, anchor='center').pack(side='left', padx=1)
+
+            for op in datos:
+                fila = tk.Frame(contenedor_tabla, bg='white')
+                fila.pack(fill='x', pady=1)
+
+                tk.Label(fila, text=op[0], width=anchos[0], bg='white', anchor='center').pack(side='left', padx=1)
+                tk.Label(fila, text=op[1], width=anchos[1], bg='white', anchor='w').pack(side='left', padx=1)
+                tk.Label(fila, text=f"Q{op[2]:.3f}", width=anchos[2], bg='white', anchor='e').pack(side='left', padx=1)
+                tk.Label(fila, text=f"Q{op[3]:.3f}", width=anchos[3], bg='white', anchor='e').pack(side='left', padx=1)
+
+                acciones = tk.Frame(fila, bg='white')
+                acciones.pack(side='left', padx=3)
+
+                tk.Button(acciones, text="✏ Modificar", bg="#FFC107", fg="black", font=("Arial", 9),
+                          relief='flat', width=10,
+                          command=lambda oid=op[0]: modificar_operacion(oid)).pack(side='left', padx=2)
+
+                tk.Button(acciones, text="🗑 Eliminar", bg="#DC3545", fg="white", font=("Arial", 9),
+                          relief='flat', width=10,
+                          command=lambda oid=op[0]: eliminar_operacion(oid)).pack(side='left', padx=2)
+
+            canvas.update_idletasks()
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def modificar_operacion(id):
+            ventana_modificar = tk.Toplevel(self.contenedor)
+            ventana_modificar.title("Modificar Operación")
+            ventana_modificar.geometry("300x250")
+            ventana_modificar.configure(bg='white')
+
+            operacion = Operaciones.buscar(id)
+
+            tk.Label(ventana_modificar, text="Nombre:", bg='white').pack()
+            e_nombre = tk.Entry(ventana_modificar)
+            e_nombre.insert(0, operacion[1])
+            e_nombre.pack(pady=5)
+
+            tk.Label(ventana_modificar, text="Precio pequeña:", bg='white').pack()
+            e_small = tk.Entry(ventana_modificar)
+            e_small.insert(0, operacion[2])
+            e_small.pack(pady=5)
+
+            tk.Label(ventana_modificar, text="Precio grande:", bg='white').pack()
+            e_big = tk.Entry(ventana_modificar)
+            e_big.insert(0, operacion[3])
+            e_big.pack(pady=5)
+
+            def guardar_cambios():
+                v = VentanaConfirmacion(self.contenedor, "¿Seguro que desea modificar esta operación?")
+                if not v.resultado:
+                    messagebox.showinfo("Cancelado", "La modificación fue cancelada.")
+                    return
+
+                nombre = e_nombre.get().strip()
+                small = e_small.get().strip()
+                big = e_big.get().strip()
+
+                if not nombre or not small or not big:
+                    messagebox.showwarning("Error", "Todos los campos son obligatorios.")
+                    return
+
+                Operaciones.modificar(id, nombre, small, big)
+                ventana_modificar.destroy()
+                mostrar_resultados()
+
+            tk.Button(ventana_modificar, text="Guardar cambios", bg="#28A745", fg="white",
+                      relief='flat', command=guardar_cambios).pack(pady=15)
+
+        def eliminar_operacion(id):
+            v = VentanaConfirmacion(self.contenedor, "¿Seguro que desea eliminar esta operación?")
+            if not v.resultado:
+                messagebox.showinfo("Cancelado", "La eliminación fue cancelada.")
+                return
+
+            try:
+                Operaciones.eliminar(id)
+                mostrar_resultados()
+            except ValueError as e:
+                messagebox.showwarning("Error", str(e))
+
+        mostrar_resultados()
+        seleccion.bind("<<ComboboxSelected>>", lambda e: mostrar_resultados())
+
+        self.crear_footer_volver(self.gestion_operaciones)
+
+    #===GESTIÓN DE TAREAS===
+    def asignar_tareas(self):
+        self.limpiar_contenedor()
+        self.crear_cabecera_submenu("🧵 Asignar Tarea")
+
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(padx=40, pady=20, fill='both', expand=True)
+
+        tk.Label(frame, text="Completa los datos para asignar la tarea:",
+                 bg='white', font=("Arial", 11, "bold"), fg='gray').pack(anchor='w', pady=(0, 5))
+
+        campos = tk.Frame(frame, bg='white')
+        campos.pack(fill='x', pady=5)
+
+        tk.Label(campos, text="Empleado:", font=("Arial", 10), bg='white', fg='gray').pack(anchor='w', pady=(10, 2))
+        empleados = Empleados.buscar_empleado_costura()
+        cb_empleado = ttk.Combobox(campos, values=empleados, state="readonly", font=("Arial", 10))
+        cb_empleado.pack(fill='x', ipady=5, pady=(0, 5))
+
+        tk.Label(campos, text="Corte:", font=("Arial", 10), bg='white', fg='gray').pack(anchor='w', pady=(10, 2))
+        cortes = [f"{p['id']} - {p['marca']} {p['categoria']}" for p in Pedidos.listar()]
+        cb_corte = ttk.Combobox(campos, values=cortes, state="readonly", font=("Arial", 10))
+        cb_corte.pack(fill='x', ipady=5, pady=(0, 5))
+
+        tk.Label(campos, text="Operación:", font=("Arial", 10), bg='white', fg='gray').pack(anchor='w', pady=(10, 2))
+        operaciones = [f"{o['id']} - {o['nombre']}" for o in Operaciones.listar()]
+        cb_oper = ttk.Combobox(campos, values=operaciones, state="readonly", font=("Arial", 10))
+        cb_oper.pack(fill='x', ipady=5, pady=(0, 5))
+
+        tk.Label(campos, text="Bandos a realizar:", font=("Arial", 10), bg='white', fg='gray').pack(anchor='w',
+                                                                                                    pady=(10, 2))
+        cb_bando = ttk.Combobox(campos, state="readonly", font=("Arial", 10))
+        cb_bando.pack(fill='x', ipady=5, pady=(0, 5))
+
+        def seleccionar_bando():
+            val_corte = cb_corte.get()
+            if not val_corte:
+                messagebox.showwarning("Atención", "Primero selecciona un corte.")
+                return
+            corte_id = int(val_corte.split(" - ")[0])
+            self.abrir_ventana_bandos(corte_id, cb_bando)
+
+        btn_bandos = tk.Button(frame, text="➕ Seleccionar Bandos",
+                               bg="#0078D7", fg="white", font=("Arial", 9, "bold"),
+                               relief='flat', cursor="hand2", padx=10, pady=6,
+                               command=seleccionar_bando)
+        btn_bandos.pack(anchor='w', pady=(10, 20))
+
+        frame_botones = tk.Frame(frame, bg='white')
+        frame_botones.pack(side='bottom', fill='x', pady=20)
+
+        def guardar_tarea():
+            if not (cb_empleado.get() and cb_corte.get() and cb_oper.get() and cb_bando.get()):
+                messagebox.showwarning("Atención", "Completa todos los campos antes de guardar.")
+                return
+
+            id_empleado = int(cb_empleado.get().split(" - ")[0])
+            id_corte = int(cb_corte.get().split(" - ")[0])
+            id_oper = int(cb_oper.get().split(" - ")[0])
+            id_bando = cb_bando.get().strip()
+
+            tarea = Tareas(id_empleado, id_corte, id_bando, id_oper)
+            tarea.guardar()
+
+            messagebox.showinfo("Éxito", "Tarea asignada correctamente.")
+            self.asignar_tareas()
+
+        tk.Button(frame_botones, text="Confirmar",
+                  bg="#D2691E", fg="white", font=("Arial", 10, "bold"),
+                  relief='flat', cursor="hand2", padx=10, pady=8,
+                  command=guardar_tarea).pack(side='left', expand=True, fill='x', padx=5)
+
+        tk.Button(frame_botones, text="Cancelar",
+                  bg="#0078D7", fg="white", font=("Arial", 10, "bold"),
+                  relief='flat', cursor="hand2", padx=10, pady=8,
+                  command=self.gestion_tareas).pack(side='left', expand=True, fill='x', padx=5)
+
+    def abrir_ventana_bandos(self, corte_id, cb_bando):
+        ventana = tk.Toplevel(self.root)
+        ventana.title("Seleccionar Bandos Disponibles")
+        ventana.config(bg="white")
+
+        ventana.update_idletasks()
+        w, h = 400, 400
+        x = (ventana.winfo_screenwidth() // 2) - (w // 2)
+        y = (ventana.winfo_screenheight() // 2) - (h // 2)
+        ventana.geometry(f"{w}x{h}+{x}+{y}")
+        ventana.resizable(False, False)
+
+        tk.Label(ventana, text="Selecciona los bandos disponibles:", bg="white", font=("Arial", 11, "bold")).pack(
+            pady=10)
+
+        frame_lista = tk.Frame(ventana, bg="white")
+        frame_lista.pack(fill="both", expand=True)
+
+        try:
+            bandos = Bandos.obtener_bandos_corte(corte_id)
+        except Exception:
+            bandos = []
+
+        vars_bandos = []
+        for b in bandos:
+            var = tk.BooleanVar()
+            chk = tk.Checkbutton(frame_lista, text=f"No.{b['id']} - Cantidad={b['cantidad']} - talla={b['talla']}",
+                                 variable=var, bg="white")
+            chk.pack(anchor="w", padx=20, pady=2)
+            vars_bandos.append((var, b['id']))
+
+        def confirmar_seleccion():
+            seleccionados = [str(b_id) for var, b_id in vars_bandos if var.get()]
+            if not seleccionados:
+                messagebox.showwarning("Atención", "Selecciona al menos un bando.")
+                return
+            cb_bando.set(", ".join(seleccionados))
+            ventana.destroy()
+
+        frame_botones = tk.Frame(ventana, bg="white")
+        frame_botones.pack(pady=15)
+        tk.Button(frame_botones, text="Confirmar", command=confirmar_seleccion, bg="#d2691e", fg="white").pack(side="left",
+                                                                                                          padx=10)
+        tk.Button(frame_botones, text="Cancelar", command=ventana.destroy, bg="#007ACC", fg="white").pack(
+            side="left", padx=10)
+
+    def marcar_tareas(self):
         pass
 
+    def ver_reportes(self):
+        pass
+
+#====MÉTODO PARA EJECUTAR====
     def ejecutar(self):
         self.root.mainloop()
 
