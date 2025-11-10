@@ -1,7 +1,10 @@
 import sqlite3
-from datetime import datetime
+import datetime
+from datetime import datetime, date, timedelta
 import tkinter as tk
 from tkinter import messagebox, ttk
+from openpyxl import Workbook
+import os
 
 
 DB_NAME = "registros.db"
@@ -45,7 +48,7 @@ class Pedidos:
                 'INSERT INTO pedidos (marca, categoria, color) VALUES (?, ?, ?)',
                 (self.marca, self.categoria, self.color)
             )
-            conn.commit()  # ← se guarda bien ahora
+            conn.commit()
             id_generado = c.lastrowid
             messagebox.showinfo("Éxito", "Pedido registrado correctamente")
             return id_generado
@@ -75,7 +78,6 @@ class Pedidos:
     @staticmethod
     def buscar(id_corte):
         with Pedidos._conn() as conn:
-            conn.row_factory = sqlite3.Row
             c = conn.cursor()
             cur = c.execute("SELECT * FROM pedidos WHERE id = ?", (id_corte,))
             return cur.fetchone()
@@ -143,6 +145,13 @@ class TallasCorte:
             c = conn.cursor()
             datos = c.execute("SELECT talla, cantidad_max FROM tallas_corte WHERE corte=?", (corte,)).fetchall()
             return {t: cant for t, cant in datos}
+
+    @staticmethod
+    def buscar(corte):
+        with Pedidos._conn() as conn:
+            c = conn.cursor()
+            cur = c.execute('SELECT talla, cantidad FROM tallas_corte WHERE corte = ?', (corte,))
+            return cur.fetchone()
 
 
 class Bandos:
@@ -221,6 +230,13 @@ class Bandos:
             datos = c.execute("SELECT id, talla, cantidad FROM bandos WHERE corte=?", (corte,)).fetchall()
             return [{"id": b, "talla": t, "cantidad": cant} for b, t, cant in datos]
 
+    @staticmethod
+    def buscar(corte):
+        with Bandos._conn() as conn:
+            c = conn.cursor()
+            bando = c.execute("SELECT id, talla, cantidad FROM bandos WHERE cortes=?", (corte)).fetchall()
+            return [{"id": b, "talla": t, "cantidad": cant} for b, t, cant in bando]
+
 
 class Operaciones:
     def __init__(self, nombre, small_price, big_price):
@@ -266,6 +282,30 @@ class Operaciones:
             if not operacion:
                 raise ValueError("No se encontró ninguna operación.")
             return operacion
+
+    @staticmethod
+    def buscar_nombre_por_id(id_operacion):
+        with Conexion.get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT nombre FROM operaciones WHERE id = ?", (id_operacion,))
+            dato = c.fetchone()
+            return dato[0] if dato else "Desconocida"
+
+    @staticmethod
+    def obtener_precio_small(id_operacion):
+        with Conexion.get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT small_price FROM operaciones WHERE id = ?", (id_operacion,))
+            dato = c.fetchone()
+            return float(dato[0]) if dato else 0
+
+    @staticmethod
+    def obtener_precio_big(id_operacion):
+        with Conexion.get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT big_price FROM operaciones WHERE id = ?", (id_operacion,))
+            dato = c.fetchone()
+            return float(dato[0]) if dato else 0
 
     @staticmethod
     def modificar(id, nombre, small_price, big_price):
@@ -363,6 +403,22 @@ class Empleados:
         if not empleados_costura:
             raise ValueError("No hay empleados en el área de costura")
         return [f"{e['id']} - {e['nombre']}" for e in empleados_costura]
+
+    @staticmethod
+    def obtener_area(id_empleado):
+        with Conexion.get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT area FROM empleados WHERE id = ?", (id_empleado,))
+            dato = c.fetchone()
+            return dato[0] if dato else ""
+
+    @staticmethod
+    def obtener_salario_hora(id_empleado):
+        with Conexion.get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT salario_hora FROM empleados WHERE id = ?", (id_empleado,))
+            dato = c.fetchone()
+            return float(dato[0]) if dato else 0
 
     @staticmethod
     def modificar(id, nombre, telefono, area):
@@ -471,6 +527,7 @@ class Tareas:
         self.operacion = operacion
         self.fecha = fecha
 
+
     @staticmethod
     def _conn():
         conn = Conexion.get_conn()
@@ -485,7 +542,6 @@ class Tareas:
             fecha TEXT DEFAULT (datetime('now')),
             FOREIGN KEY(id_empleado) REFERENCES empleados(id),
             FOREIGN KEY(corte) REFERENCES pedidos(id),
-            FOREIGN KEY(bando) REFERENCES bandos(id),
             FOREIGN KEY(operacion) REFERENCES operaciones(id)
         )
         ''')
@@ -495,22 +551,34 @@ class Tareas:
     def guardar(self):
         with self._conn() as conn:
             c = conn.cursor()
-            c.execute(
-                "INSERT INTO tareas (id_empleado, corte, bando, operacion, fecha) VALUES (?, ?, ?, ?, datetime('now'))",
-                (self.id_empleado, self.corte, self.bando, self.operacion)
-            )
+            c.execute('''
+                INSERT INTO tareas (id_empleado, corte, bando, operacion, fecha)
+                VALUES (?, ?, ?, ?, datetime('now'))
+            ''', (self.id_empleado, self.corte, str(self.bando), self.operacion))
             conn.commit()
             messagebox.showinfo("Éxito", "Tarea asignada correctamente")
 
     @staticmethod
     def listar_por_empleado(id_empleado):
         with Tareas._conn() as conn:
-            c = conn.cursor()
-            c.execute("SELECT * FROM tareas WHERE id_empleado = ?", (id_empleado,))
-            lista = c.fetchall()
-            if not lista:
-                raise ValueError("No se le han asignado tareas aún.")
-            return lista
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            datos = cursor.execute('''
+                SELECT id, corte, bando, operacion
+                FROM tareas
+                WHERE id_empleado = ?
+            ''', (id_empleado,)).fetchall()
+
+            resultado = []
+            for t in datos:
+                bandos_ids = [int(x) for x in t['bando'].split(",") if x.strip()] if t['bando'] else []
+                resultado.append({
+                    'id': t['id'],
+                    'corte': t['corte'],
+                    'bandos': bandos_ids,
+                    'operacion': t['operacion']
+                })
+            return resultado
 
     @staticmethod
     def eliminar(id_tarea):
@@ -519,7 +587,6 @@ class Tareas:
             c.execute("DELETE FROM tareas WHERE id = ?", (id_tarea,))
             conn.commit()
             messagebox.showinfo("Éxito", "Tarea eliminada correctamente")
-
 
 
 class Reportes:
@@ -531,34 +598,58 @@ class Reportes:
     @staticmethod
     def _conn():
         conn = Conexion.get_conn()
-        conn.execute('''
-        CREATE TABLE IF NOT EXISTS reportes (
+        c = conn.cursor()
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS reporte (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             id_tarea INTEGER NOT NULL,
-            fecha TEXT NOT NULL,
-            estado TEXT NOT NULL,
-            FOREIGN KEY(id_tarea) REFERENCES tareas(id)
+            id_empleado INTEGER NOT NULL,
+            id_operacion INTEGER NOT NULL,
+            talla INTEGER NOT NULL,
+            bandos TEXT NOT NULL,
+            fecha TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY(id_tarea) REFERENCES tareas(id),
+            FOREIGN KEY(id_empleado) REFERENCES empleados(id),
+            FOREIGN KEY(id_operacion) REFERENCES operaciones(id)
         )
         ''')
         conn.commit()
         return conn
 
-    def guardar(self):
-        with self._conn() as cursor:
-            cursor.execute(
-                "INSERT INTO reportes(id_tarea, fecha, estado) VALUES (?, ?, ?)",
-                (self.id_tarea, self.fecha, self.estado)
-            )
+    @staticmethod
+    def registrar_tarea(id_tarea):
+        with Reportes._conn() as conn:
+            c = conn.cursor()
+            tarea = c.execute("""
+                SELECT id_empleado, operacion AS id_operacion, bando AS bandos
+                FROM tareas
+                WHERE id = ?
+            """, (id_tarea,)).fetchone()
+
+            if tarea:
+                c.execute("""
+                    INSERT INTO reporte (id_tarea, id_empleado, id_operacion, talla, bandos, fecha)
+                    VALUES (?, ?, ?, ?, ?, datetime('now'))
+                """, (id_tarea, tarea['id_empleado'], tarea['id_operacion'], 30, tarea['bandos']))
+                conn.commit()
 
     @staticmethod
-    def listar():
-        with Reportes._conn() as cursor:
-            datos = cursor.execute(
-                '''SELECT r.id, t.id_empleado, t.corte, t.bandos, t.operacion, 
-                          r.fecha, r.estado
-                   FROM reportes r 
-                   INNER JOIN tareas t ON r.id_tarea = t.id'''
-            ).fetchall()
+    def obtener_tareas_realizadas(id_empleado, inicio, fin):
+        with Reportes._conn() as conn:
+            c = conn.cursor()
+            c.execute("""
+                      SELECT r.id,
+                             r.fecha,
+                             r.id_operacion,
+                             r.talla,
+                             r.bandos,
+                             o.nombre AS operacion
+                      FROM reporte r
+                               JOIN operaciones o ON r.id_operacion = o.id
+                      WHERE r.id_empleado = ?
+                        AND r.fecha BETWEEN ? AND ?
+                      """, (id_empleado, inicio, fin))
+            datos = c.fetchall()
             return datos
 
     @staticmethod
@@ -579,20 +670,137 @@ class Reportes:
             ).fetchall()
             return datos
 
-    @staticmethod
-    def registrar_tarea(id_tarea):
-        with Reportes._conn() as cursor:
-            tarea = cursor.execute("SELECT * FROM tareas WHERE id = ?", (id_tarea,)).fetchone()
-            if tarea is None:
-                raise ValueError("La tarea no existe o ya fue procesada.")
 
-            fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            estado = "Completada"
-            cursor.execute(
-                "INSERT INTO reportes(id_tarea, fecha, estado) VALUES (?, ?, ?)",
-                (id_tarea, fecha, estado)
+class RegistroHoras:
+    def __init__(self, id_empleado, fecha=None, hora_entrada=None, hora_salida=None):
+        self.id_empleado = id_empleado
+        self.fecha = fecha
+        self.hora_entrada = hora_entrada
+        self.hora_salida = hora_salida
+
+    @staticmethod
+    def _conn():
+        conn = Conexion.get_conn()
+        c = conn.cursor()
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS registro_horas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_empleado INTEGER NOT NULL,
+                fecha TEXT DEFAULT (date('now')),
+                hora_entrada TEXT,
+                hora_salida TEXT,
+                FOREIGN KEY(id_empleado) REFERENCES empleados(id)
             )
-            cursor.execute("DELETE FROM tareas WHERE id = ?", (id_tarea,))
+        ''')
+        conn.commit()
+        return conn
+
+    @staticmethod
+    def registrar_entrada(id_empleado):
+        with RegistroHoras._conn() as conn:
+            c = conn.cursor()
+            c.execute('''
+                SELECT id FROM registro_horas 
+                WHERE id_empleado = ? AND hora_salida IS NULL 
+                AND fecha = date('now')
+            ''', (id_empleado,))
+            pendiente = c.fetchone()
+
+            if pendiente:
+                messagebox.showwarning("Atención", "Ya existe una entrada sin marcar salida para hoy.")
+                return
+
+            c.execute('''
+                INSERT INTO registro_horas (id_empleado, hora_entrada)
+                VALUES (?, time('now'))
+            ''', (id_empleado,))
+            conn.commit()
+            messagebox.showinfo("Éxito", "Entrada registrada correctamente.")
+
+    @staticmethod
+    def registrar_salida(id_empleado):
+        with RegistroHoras._conn() as conn:
+            c = conn.cursor()
+            c.execute('''
+                SELECT id FROM registro_horas
+                WHERE id_empleado = ? AND hora_salida IS NULL
+                ORDER BY id DESC LIMIT 1
+            ''', (id_empleado,))
+            fila = c.fetchone()
+
+            if not fila:
+                messagebox.showwarning("Atención", "No hay entrada registrada pendiente de salida.")
+                return
+
+            id_registro = fila[0]
+            c.execute('''
+                UPDATE registro_horas
+                SET hora_salida = time('now')
+                WHERE id = ?
+            ''', (id_registro,))
+            conn.commit()
+            messagebox.showinfo("Éxito", "Salida registrada correctamente.")
+
+    @staticmethod
+    def obtener_registros_horarios(id_empleado, inicio, fin):
+        with RegistroHoras._conn() as conn:
+            c = conn.cursor()
+            c.execute('''
+                SELECT fecha, hora_entrada, hora_salida
+                FROM registro_horas
+                WHERE id_empleado = ? AND fecha BETWEEN ? AND ?
+                ORDER BY fecha ASC
+            ''', (id_empleado, str(inicio), str(fin)))
+            datos = c.fetchall()
+
+            registros = []
+            for d in datos:
+                fecha, entrada, salida = d
+                if entrada and salida:
+                    formato = "%H:%M:%S"
+                    h1 = datetime.strptime(entrada, formato)
+                    h2 = datetime.strptime(salida, formato)
+                    horas = (h2 - h1).seconds / 3600
+                else:
+                    horas = 0
+                registros.append({
+                    'fecha': fecha,
+                    'entrada': entrada,
+                    'salida': salida,
+                    'horas': round(horas, 2)
+                })
+            return registros
+
+    @staticmethod
+    def obtener_por_empleado(id_empleado):
+        with RegistroHoras._conn as conn:
+            c = conn.cursor()
+            c.execute("""
+                  SELECT fecha, hora_entrada, hora_salida, horas_trabajadas, salario_hora
+                  FROM registro_horas
+                  WHERE empleado_id = ?
+                    AND (pagado IS NULL OR pagado = 0)
+                  """, (id_empleado,))
+            registros = [
+                {
+                'fecha': row[0],
+                'hora_entrada': row[1],
+                'hora_salida': row[2],
+                'horas_trabajadas': row[3],
+                'salario_hora': row[4]
+                }
+                for row in c.fetchall()
+            ]
+            conn.close()
+            return registros
+
+    @staticmethod
+    def reiniciar_horas(id_empleado):
+        with RegistroHoras._conn() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM registro_horas WHERE empleado_id = ?", (id_empleado,))
+            conn.commit()
+            conn.close()
 
 
 class Cuentas:
@@ -643,6 +851,14 @@ class Cuentas:
             return cur['rol']
 
     @staticmethod
+    def buscar_id(usuario, password):
+        with Cuentas._conn() as conn:
+            cur = conn.cursor()
+            id_empleado = cur.execute("SELECT id_empleado FROM cuentas WHERE usuario = ? AND password = ?",
+                        (usuario, password)).fetchone()
+            return id_empleado[0] if id_empleado else None
+
+    @staticmethod
     def eliminar(id_empleado):
         with Cuentas._conn() as cursor:
             cur = cursor.execute("DELETE FROM cuentas WHERE id_empleado = ?", (id_empleado,))
@@ -680,6 +896,117 @@ class VentanaConfirmacion(tk.Toplevel):
         self.destroy()
 
 
+class TablaHoras:
+    def __init__(self, parent, registros):
+        self.parent = parent
+        self.registros = registros
+
+    def mostrar(self):
+        contenedor_scroll = tk.Frame(self.parent, bg='white')
+        contenedor_scroll.pack(fill='both', expand=True)
+
+        vsb = tk.Scrollbar(contenedor_scroll, orient="vertical", width=16)
+        vsb.pack(side="right", fill="y")
+
+        hsb = tk.Scrollbar(contenedor_scroll, orient="horizontal", width=16)
+        hsb.pack(side="bottom", fill="x")
+
+        canvas = tk.Canvas(
+            contenedor_scroll,
+            bg='white',
+            highlightthickness=0,
+            yscrollcommand=vsb.set,
+            xscrollcommand=hsb.set
+        )
+        canvas.pack(side="left", fill="both", expand=True)
+
+        vsb.config(command=canvas.yview)
+        hsb.config(command=canvas.xview)
+
+        scroll_frame = tk.Frame(canvas, bg='white')
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+
+        header = tk.Frame(scroll_frame, bg="#f2f2f2")
+        header.pack(fill='x', pady=2)
+
+        columnas = ["Fecha", "Hora Entrada", "Hora Salida", "Horas Totales", "Salario/Hora", "Pago Día"]
+        for col in columnas:
+            tk.Label(
+                header,
+                text=col,
+                font=("Arial", 10, "bold"),
+                bg="#f2f2f2",
+                width=15,
+                anchor='w'
+            ).pack(side='left', padx=2)
+
+        total_pago = 0
+
+        for h in self.registros:
+            fila = tk.Frame(scroll_frame, bg='white')
+            fila.pack(fill='x', pady=1)
+
+            horas_trab = h.get('horas_trabajadas')
+            if horas_trab is None:
+                entrada = h.get('hora_entrada')
+                salida = h.get('hora_salida')
+                if entrada and salida:
+                    try:
+                        formato = "%H:%M"
+                        hora_entrada = datetime.strptime(entrada, formato)
+                        hora_salida = datetime.strptime(salida, formato)
+                        horas_trab = (hora_salida - hora_entrada).seconds / 3600
+                    except Exception:
+                        horas_trab = 0
+                else:
+                    horas_trab = 0
+
+            salario_hora = h.get('salario_hora', 0)
+            pago_dia = horas_trab * salario_hora
+            total_pago += pago_dia
+
+            datos = [
+                h.get('fecha', 'N/A'),
+                h.get('hora_entrada', '-'),
+                h.get('hora_salida', '-'),
+                f"{horas_trab:.2f}",
+                f"Q{salario_hora:.2f}",
+                f"Q{pago_dia:.2f}"
+            ]
+
+            for d in datos:
+                tk.Label(
+                    fila,
+                    text=d,
+                    font=("Arial", 10),
+                    bg='white',
+                    width=15,
+                    anchor='w'
+                ).pack(side='left', padx=2)
+
+        tk.Label(
+            scroll_frame,
+            text=f"TOTAL A PAGAR: Q{total_pago:.2f}",
+            bg='white',
+            fg='green',
+            font=("Arial", 11, "bold")
+        ).pack(pady=10)
+
+        scroll_frame.update_idletasks()
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def _on_shift_mousewheel(event):
+            canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        canvas.bind_all("<Shift-MouseWheel>", _on_shift_mousewheel)
+
+
 class InterfazGrafica:
     def __init__(self):
         self.root = tk.Tk()
@@ -691,6 +1018,7 @@ class InterfazGrafica:
         self.centrar_ventana(500, 600)
 
         self.usuario_actual = None
+        self.password_actual = None
         self.tipo_usuario = None
 
         self.contenedor = tk.Frame(self.root, bg='white')
@@ -758,14 +1086,14 @@ class InterfazGrafica:
         def alternar_password():
             if self.mostrar:
                 self.entry_password.config(show='*')
-                boton_ver.config(text="👁️mostrar")
+                boton_ver.config(text="👁mostrar")
                 self.mostrar = False
             else:
                 self.entry_password.config(show='')
                 boton_ver.config(text="🙈ocultar")
                 self.mostrar = True
 
-        boton_ver = tk.Button(frame, text="👁️mostrar", bg='white', relief='flat', cursor="hand2",
+        boton_ver = tk.Button(frame, text="👁mostrar", bg='white', relief='flat', cursor="hand2",
                               command=alternar_password)
         boton_ver.pack(anchor='e', pady=(5, 0))
 
@@ -791,6 +1119,7 @@ class InterfazGrafica:
                 rol = Cuentas.buscar(usuario, password)
                 self.tipo_usuario = str(rol)
                 self.usuario_actual = usuario
+                self.password_actual = password
                 if self.tipo_usuario.lower() == "administrador":
                     self.menu_administrador()
                 else:
@@ -945,7 +1274,7 @@ class InterfazGrafica:
         cabecera.pack(fill='x')
         cabecera.pack_propagate(False)
 
-        tk.Label(cabecera, text=f"Bienvenidos: {self.tipo_usuario}",
+        tk.Label(cabecera, text=f"Bienvenidos: {self.usuario_actual}",
                  font=("Arial", 14, "bold"), bg='#0078D7', fg='white').pack(pady=25)
 
         frame_contenido = tk.Frame(self.contenedor, bg='white')
@@ -954,10 +1283,21 @@ class InterfazGrafica:
         tk.Label(frame_contenido, text="Seleccione una opción",
                  font=("Arial", 12), bg='white', fg='gray').pack(pady=20)
 
-        botones = [
-            ("📋 Ver mis tareas", self.ver_tareas_empleado),
-            ("✅ Completar operación", self.completar_operacion_empleado)
-        ]
+        botones = []
+
+        id_empleado = Cuentas.buscar_id(self.usuario_actual, self.password_actual)
+        area = Empleados.obtener_area(id_empleado)
+        if area.lower() == "costura":
+            botones = [
+                ("Ver tareas", self.ver_tareas),
+                ("Ver reporte", self.ver_reporte_empleado)
+            ]
+        else:
+            botones = [
+                ("Registrar entrada", self.registrar_entrada),
+                ("Registrar salida", self.registrar_salida),
+                ("ver reporte", self.ver_reporte_empleado)
+            ]
 
         for texto, comando in botones:
             boton = tk.Button(frame_contenido, text=texto, bg='#0078D7', fg='white',
@@ -1350,7 +1690,107 @@ class InterfazGrafica:
             messagebox.showerror("Error", str(e))
 
     def pagar(self):
-        pass
+        self.limpiar_contenedor()
+        self.crear_cabecera_submenu("💰 Pago de Empleados")
+
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(fill='both', expand=True, padx=40, pady=20)
+
+        # --- Selección de empleado ---
+        tk.Label(frame, text="Seleccione un empleado:", font=("Arial", 11, "bold"), bg='white').pack(pady=10)
+        empleados = Empleados.listar()
+        lista_nombres = [f"{e['id']} - {e['nombre']}" for e in empleados]
+
+        combo = ttk.Combobox(frame, values=lista_nombres, state="readonly", width=40)
+        combo.pack(pady=5)
+
+        frame_tabla = tk.Frame(frame, bg='white')
+        frame_tabla.pack(fill='both', expand=True, pady=10)
+
+        frame_botones = tk.Frame(frame, bg='white')
+        frame_botones.pack(pady=15)
+
+        def mostrar_reporte():
+            for widget in frame_tabla.winfo_children():
+                widget.destroy()
+
+            if not combo.get():
+                messagebox.showwarning("Aviso", "Debe seleccionar un empleado.")
+                return
+
+            id_empleado = int(combo.get().split(" - ")[0])
+            registros = RegistroHoras.obtener_por_empleado(id_empleado)
+
+            if not registros:
+                messagebox.showinfo("Sin datos", "Este empleado no tiene horas registradas.")
+                return
+
+            # Crear tabla dentro del frame_tabla
+            tabla = TablaHoras(frame_tabla, registros)
+            tabla.mostrar()
+            frame_tabla.total_pago = sum(
+                (r.get('horas_trabajadas', 0) or 0) * (r.get('salario_hora', 0) or 0)
+                for r in registros
+            )
+            frame_tabla.registros = registros
+            frame_tabla.id_empleado = id_empleado
+
+        def guardar_excel():
+            if not hasattr(frame_tabla, 'registros'):
+                messagebox.showwarning("Aviso", "Primero visualice un reporte antes de pagar.")
+                return
+
+            registros = frame_tabla.registros
+            total_pago = frame_tabla.total_pago
+            id_empleado = frame_tabla.id_empleado
+
+            empleado = next((e for e in empleados if e['id'] == id_empleado), None)
+            nombre_empleado = empleado['nombre'] if empleado else "Empleado"
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Reporte de Pago"
+
+            ws.append(["Empleado:", nombre_empleado])
+            ws.append(["Fecha de Pago:", datetime.date.today().strftime("%d/%m/%Y")])
+            ws.append([])
+            ws.append(["Fecha", "Hora Entrada", "Hora Salida", "Horas Totales", "Salario/Hora", "Pago Día"])
+
+            for r in registros:
+                horas = r.get('horas_trabajadas', 0)
+                pago_dia = horas * r.get('salario_hora', 0)
+                ws.append([
+                    r.get('fecha', ''),
+                    r.get('hora_entrada', ''),
+                    r.get('hora_salida', ''),
+                    f"{horas:.2f}",
+                    f"Q{r.get('salario_hora', 0):.2f}",
+                    f"Q{pago_dia:.2f}"
+                ])
+
+            ws.append([])
+            ws.append(["", "", "", "", "TOTAL A PAGAR:", f"Q{total_pago:.2f}"])
+
+            carpeta = "reportes_pago"
+            os.makedirs(carpeta, exist_ok=True)
+            nombre_archivo = f"{carpeta}/Pago_{nombre_empleado.replace(' ', '_')}_{datetime.date.today()}.xlsx"
+            wb.save(nombre_archivo)
+
+            RegistroHoras.reiniciar_horas(id_empleado)
+
+            messagebox.showinfo("Pago registrado",
+                                f"Se guardó el reporte en:\n{nombre_archivo}\n\nTotal pagado: Q{total_pago:.2f}")
+
+            self.gestion_empleados()
+
+        tk.Button(frame_botones, text="📄 Ver Reporte", font=("Arial", 10, "bold"),
+                  bg="#3498db", fg="white", width=14, command=mostrar_reporte).pack(side='left', padx=10)
+
+        tk.Button(frame_botones, text="💰 Pagar", font=("Arial", 10, "bold"),
+                  bg="#27ae60", fg="white", width=14, command=guardar_excel).pack(side='left', padx=10)
+
+        tk.Button(frame_botones, text="↩️ Regresar", font=("Arial", 10, "bold"),
+                  bg="#e74c3c", fg="white", width=14, command=self.gestion_empleados).pack(side='left', padx=10)
 
     #=====GESTIÓN PEDIDOS=====
     def registrar_corte(self):
@@ -2167,12 +2607,419 @@ class InterfazGrafica:
             side="left", padx=10)
 
     def marcar_tareas(self):
-        pass
+        self.limpiar_contenedor()
+        self.crear_cabecera_submenu("✅ Marcar Tareas Completadas")
+
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(padx=40, pady=20, fill='both', expand=True)
+
+        tk.Label(frame, text="Selecciona un empleado para ver sus tareas asignadas:",
+                 bg='white', font=("Arial", 11, "bold"), fg='gray').pack(anchor='w', pady=(0, 15))
+
+        empleados = Empleados.buscar_empleado_costura()
+        cb_empleado = ttk.Combobox(frame, values=empleados, state="readonly", font=("Arial", 10))
+        cb_empleado.pack(fill='x', ipady=6, pady=(0, 20))
+
+        contenedor_tabla = tk.Frame(frame, bg='white')
+        contenedor_tabla.pack(fill='both', expand=True)
+
+        canvas = tk.Canvas(contenedor_tabla, bg='white', highlightthickness=0)
+        vsb = tk.Scrollbar(contenedor_tabla, orient="vertical", command=canvas.yview, width=16)
+        hsb = tk.Scrollbar(contenedor_tabla, orient="horizontal", command=canvas.xview, width=16)
+        scroll_frame = tk.Frame(canvas, bg='white')
+
+        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+        hsb.pack(side="bottom", fill="x")
+
+        checks = []
+
+        def cargar_tareas():
+            for widget in scroll_frame.winfo_children():
+                widget.destroy()
+            checks.clear()
+
+            if not cb_empleado.get():
+                return
+
+            id_empleado = int(cb_empleado.get().split(" - ")[0])
+            tareas = Tareas.listar_por_empleado(id_empleado)
+
+            if not tareas:
+                tk.Label(scroll_frame, text="Este empleado no tiene tareas asignadas.",
+                         bg='white', fg='gray', font=("Arial", 10, "italic")).pack(pady=10)
+                return
+
+            header = tk.Frame(scroll_frame, bg="#f2f2f2")
+            header.pack(fill='x', pady=2)
+            tk.Label(header, text="Corte", font=("Arial", 10, "bold"), bg="#f2f2f2", width=5, anchor='w').pack(
+                side='left', padx=2)
+            tk.Label(header, text="Operación", font=("Arial", 10, "bold"), bg="#f2f2f2", width=23, anchor='w').pack(
+                side='left', padx=2)
+            tk.Label(header, text="Bandos", font=("Arial", 10, "bold"), bg="#f2f2f2", width=12, anchor='w').pack(
+                side='left', padx=2)
+            tk.Label(header, text="✔", font=("Arial", 10, "bold"), bg="#f2f2f2", width=2).pack(side='left', padx=2)
+
+            for tarea in tareas:
+                fila = tk.Frame(scroll_frame, bg='white')
+                fila.pack(fill='x', pady=1)
+
+                nombre_operacion = Operaciones.buscar_nombre_por_id(tarea['operacion'])
+
+                tk.Label(fila, text=tarea['corte'], font=("Arial", 10), bg='white', width=5, anchor='w').pack(
+                    side='left', padx=1)
+                tk.Label(fila, text=nombre_operacion, font=("Arial", 10), bg='white', width=23, anchor='w').pack(
+                    side='left', padx=2)
+                tk.Label(fila, text=", ".join(map(str, tarea['bandos'])), font=("Arial", 10), bg='white', width=12,
+                         anchor='w').pack(side='left', padx=3)
+
+                var = tk.BooleanVar()
+                chk = tk.Checkbutton(fila, variable=var, bg='white', onvalue=True, offvalue=False)
+                chk.pack(side='left', padx=5)
+                checks.append((tarea['id'], var))
+
+        cb_empleado.bind("<<ComboboxSelected>>", lambda e: cargar_tareas())
+
+        frame_botones = tk.Frame(frame, bg='white')
+        frame_botones.pack(side='bottom', fill='x', pady=20)
+
+        def guardar_tareas():
+            tareas_marcadas = [tid for tid, var in checks if var.get()]
+            if not tareas_marcadas:
+                messagebox.showwarning("Atención", "No seleccionaste ninguna tarea completada.")
+                return
+
+            for id_tarea in tareas_marcadas:
+                try:
+                    Reportes.registrar_tarea(id_tarea)
+                except Exception as e:
+                    messagebox.showerror("Error", f"No se pudo registrar la tarea {id_tarea}: {e}")
+
+            messagebox.showinfo("Éxito", "Las tareas completadas fueron registradas correctamente.")
+            cargar_tareas()
+
+        tk.Button(frame_botones, text="Guardar",
+                  bg="#D2691E", fg="white", font=("Arial", 10, "bold"),
+                  relief='flat', cursor="hand2", padx=10, pady=8,
+                  command=guardar_tareas).pack(side='left', expand=True, fill='x', padx=5)
+
+        tk.Button(frame_botones, text="Cancelar",
+                  bg="#0078D7", fg="white", font=("Arial", 10, "bold"),
+                  relief='flat', cursor="hand2", padx=10, pady=8,
+                  command=self.gestion_tareas).pack(side='left', expand=True, fill='x', padx=5)
 
     def ver_reportes(self):
-        pass
+        self.limpiar_contenedor()
+        self.crear_cabecera_submenu("📄 Reporte Quincenal")
 
-#====MÉTODO PARA EJECUTAR====
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(padx=40, pady=20, fill='both', expand=True)
+
+        tk.Label(frame, text="Selecciona un empleado:", bg='white',
+                 font=("Arial", 11, "bold"), fg='gray').pack(anchor='w', pady=(0, 15))
+
+        empleados = Empleados.listar()
+        lista_empleados = [f"{e['id']} - {e['nombre']}" for e in empleados]
+
+        cb_empleado = ttk.Combobox(frame, values=lista_empleados, state="readonly", font=("Arial", 10))
+        cb_empleado.pack(fill='x', ipady=6, pady=(0, 20))
+
+        contenedor_tabla = tk.Frame(frame, bg='white')
+        contenedor_tabla.pack(fill='both', expand=True)
+
+        canvas = tk.Canvas(contenedor_tabla, bg='white', highlightthickness=0)
+        vsb = tk.Scrollbar(contenedor_tabla, orient="vertical", command=canvas.yview, width=16)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        scroll_frame = tk.Frame(canvas, bg='white')
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        def cargar_reporte():
+            for widget in scroll_frame.winfo_children():
+                widget.destroy()
+
+            if not cb_empleado.get():
+                return
+
+            id_empleado = int(cb_empleado.get().split(" - ")[0])
+            empleado = Empleados.consultar(id_empleado)
+
+            area = empleado['area'].lower()
+
+            from datetime import datetime, timedelta
+            hoy = datetime.now().date()
+            dia = hoy.day
+
+            if 1 <= dia <= 8:
+                inicio = hoy.replace(day=27) - timedelta(days=15)
+                fin = hoy.replace(day=8)
+            elif 9 <= dia <= 22:
+                inicio = hoy.replace(day=10)
+                fin = hoy.replace(day=22)
+            else:
+                inicio = hoy.replace(day=27)
+                fin = (inicio + timedelta(days=12))
+
+            tk.Label(scroll_frame, text=f"Reporte del {inicio.strftime('%d/%m/%Y')} al {fin.strftime('%d/%m/%Y')}",
+                     bg='white', fg='gray', font=("Arial", 10, "italic")).pack(pady=(0, 10))
+
+            if "costura" in area:
+                tareas = Reportes.obtener_tareas_realizadas(id_empleado, inicio, fin)
+
+                if not tareas:
+                    tk.Label(scroll_frame, text="No hay tareas registradas en este periodo.",
+                             bg='white', fg='gray', font=("Arial", 10, "italic")).pack()
+                    return
+
+                header = tk.Frame(scroll_frame, bg="#f2f2f2")
+                header.pack(fill='x', pady=2)
+                columnas = ["Corte", "Operación", "Talla", "Bandos", "Precio", "Total"]
+                for col in columnas:
+                    tk.Label(header, text=col, font=("Arial", 10, "bold"),
+                             bg="#f2f2f2", width=12, anchor='w').pack(side='left', padx=2)
+
+                total_general = 0
+                for t in tareas:
+                    fila = tk.Frame(scroll_frame, bg='white')
+                    fila.pack(fill='x', pady=1)
+
+                    talla = int(t['talla'])
+                    precio = t['small_price'] if talla < 28 else t['big_price']
+                    total = precio * len(t['bandos'])
+                    total_general += total
+
+                    datos = [
+                        t['corte'],
+                        t['operacion_nombre'],
+                        talla,
+                        ", ".join(map(str, t['bandos'])),
+                        f"Q{precio:.2f}",
+                        f"Q{total:.2f}"
+                    ]
+                    for d in datos:
+                        tk.Label(fila, text=d, font=("Arial", 10), bg='white', width=12, anchor='w').pack(side='left',
+                                                                                                          padx=2)
+
+                tk.Label(scroll_frame, text=f"TOTAL GENERAL: Q{total_general:.2f}",
+                         bg='white', fg='green', font=("Arial", 11, "bold")).pack(pady=10)
+
+            else:
+                horas = RegistroHoras.obtener_registros_horarios(id_empleado, inicio, fin)
+
+                if not horas:
+                    tk.Label(scroll_frame, text="No hay registros de horas en este periodo.",
+                             bg='white', fg='gray', font=("Arial", 10, "italic")).pack()
+                    return
+
+                tabla = TablaHoras(scroll_frame, horas)
+                tabla.mostrar()
+
+        cb_empleado.bind("<<ComboboxSelected>>", lambda e: cargar_reporte())
+
+        tk.Button(frame, text="Cerrar", bg="#0078D7", fg="white",
+                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                  command=self.gestion_tareas).pack(side='bottom', pady=20)
+
+#====VENTANAS DE SUBMENÚ DE EMPLEADOS====
+    def ver_tareas(self):
+        self.limpiar_contenedor()
+        self.crear_cabecera_submenu("📋 Tareas Asignadas")
+
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(padx=40, pady=20, fill='both', expand=True)
+
+        id_empleado = Cuentas.buscar_id(self.usuario_actual, self.password_actual)
+        if not id_empleado:
+            messagebox.showerror("Error", "No se pudo obtener el ID del empleado.")
+            return
+
+        tareas = Tareas.listar_por_empleado(id_empleado)
+
+        if not tareas:
+            tk.Label(frame, text="No tienes tareas asignadas.", font=("Arial", 12), bg='white', fg='gray').pack(pady=30)
+            return
+
+        contenedor_tabla = tk.Frame(frame, bg='white')
+        contenedor_tabla.pack(fill='both', expand=True)
+
+        canvas = tk.Canvas(contenedor_tabla, bg='white', highlightthickness=0)
+        canvas.pack(side="left", fill="both", expand=True)
+
+        vsb = tk.Scrollbar(contenedor_tabla, orient="vertical", command=canvas.yview)
+        vsb.pack(side="right", fill="y")
+
+        hsb = tk.Scrollbar(contenedor_tabla, orient="horizontal", command=canvas.xview)
+        hsb.pack(side="bottom", fill="x")
+
+        canvas.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+        tabla_frame = tk.Frame(canvas, bg='white')
+        canvas.create_window((0, 0), window=tabla_frame, anchor='nw')
+
+        encabezados = ["Corte", "Bando(s)", "Operación", "Fecha"]
+        ancho_columnas = [50, 120, 150, 200, 120]
+
+        for i, texto in enumerate(encabezados):
+            tk.Label(tabla_frame, text=texto, font=("Arial", 10, "bold"), bg="#0078D7", fg="white",
+                     width=ancho_columnas[i] // 10, pady=6).grid(row=0, column=i, sticky="nsew", padx=1, pady=1)
+
+        for fila, t in enumerate(tareas, start=1):
+            tk.Label(tabla_frame, text=t["corte"], bg="white", font=("Arial", 10)).grid(row=fila, column=0,
+                                                                                        sticky="nsew", padx=1, pady=1)
+            tk.Label(tabla_frame, text=", ".join(map(str, t["bandos"])), bg="white", font=("Arial", 10)).grid(row=fila,
+                                                                                                              column=1,
+                                                                                                              sticky="nsew",
+                                                                                                              padx=1,
+                                                                                                              pady=1)
+            nombre_operacion = Operaciones.buscar_nombre_por_id(t["operacion"]) if "operacion" in t else "Desconocida"
+            tk.Label(tabla_frame, text=nombre_operacion, bg="white", font=("Arial", 10)).grid(row=fila, column=2,
+                                                                                              sticky="nsew", padx=1,
+                                                                                              pady=1)
+
+            tk.Label(tabla_frame, text=t.get("fecha", "N/A"), bg="white", font=("Arial", 10)).grid(row=fila, column=3,
+                                                                                                   sticky="nsew",
+                                                                                                   padx=1, pady=1)
+
+        tabla_frame.update_idletasks()
+        canvas.config(scrollregion=canvas.bbox("all"))
+
+        tk.Button(frame, text="Volver", bg="#0078D7", fg="white",
+                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                  command=self.menu_empleado).pack(side='bottom', pady=20)
+
+    def ver_reporte_empleado(self):
+        self.limpiar_contenedor()
+        self.crear_cabecera_submenu("📄 Reporte Quincenal")
+
+        frame = tk.Frame(self.contenedor, bg='white')
+        frame.pack(padx=40, pady=20, fill='both', expand=True)
+
+        frame.grid_rowconfigure(0, weight=1)
+        frame.grid_rowconfigure(1, weight=0)
+        frame.grid_columnconfigure(0, weight=1)
+
+        contenedor_tabla = tk.Frame(frame, bg='white')
+        contenedor_tabla.grid(row=0, column=0, sticky='nsew', pady=(0, 10))
+
+        canvas = tk.Canvas(contenedor_tabla, bg='white', highlightthickness=0)
+        vsb = tk.Scrollbar(contenedor_tabla, orient="vertical", command=canvas.yview, width=16)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        scroll_frame = tk.Frame(canvas, bg='white')
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        try:
+            id_empleado = Cuentas.buscar_id(self.usuario_actual, self.password_actual)
+        except:
+            messagebox.showerror("Error", "Error al conectar con el sistema de cuentas.")
+            return
+
+        if not id_empleado:
+            messagebox.showerror("Error", "No se pudo obtener el ID del empleado.")
+            return
+
+        empleado = Empleados.consultar(id_empleado)
+        area = empleado['area'].lower()
+
+        hoy = datetime.now().date()
+        dia = hoy.day
+
+        if 1 <= dia <= 8:
+            inicio = hoy.replace(day=27) - timedelta(days=15)
+            fin = hoy.replace(day=8)
+        elif 9 <= dia <= 22:
+            inicio = hoy.replace(day=10)
+            fin = hoy.replace(day=22)
+        else:
+            inicio = hoy.replace(day=27)
+            fin = (inicio + timedelta(days=12))
+
+        tk.Label(scroll_frame,
+                 text=f"Reporte del {inicio.strftime('%d/%m/%Y')} al {fin.strftime('%d/%m/%Y')}",
+                 bg='white', fg='gray', font=("Arial", 10, "italic")).pack(pady=(0, 10))
+
+        if "costura" in area:
+            tareas = Reportes.obtener_tareas_realizadas(id_empleado, inicio, fin)
+
+            if not tareas:
+                tk.Label(scroll_frame, text="No hay tareas registradas en este periodo.",
+                         bg='white', fg='gray', font=("Arial", 10, "italic")).pack()
+            else:
+                header = tk.Frame(scroll_frame, bg="#f2f2f2")
+                header.pack(fill='x', pady=2)
+                columnas = ["Corte", "Operación", "Talla", "Bandos", "Precio", "Total"]
+                ancho_columnas = [12, 12, 6, 20, 8, 10]
+
+                for col, width in zip(columnas, ancho_columnas):
+                    tk.Label(header, text=col, font=("Arial", 10, "bold"),
+                             bg="#f2f2f2", width=width, anchor='w').pack(side='left', padx=2)
+
+                total_general = 0
+                for t in tareas:
+                    fila = tk.Frame(scroll_frame, bg='white')
+                    fila.pack(fill='x', pady=1)
+
+                    talla = int(t['talla'])
+                    precio = t['small_price'] if talla < 28 else t['big_price']
+                    total = precio * len(t['bandos'])
+                    total_general += total
+
+                    datos = [
+                        t['corte'],
+                        t['operacion_nombre'],
+                        talla,
+                        ", ".join(map(str, t['bandos'])),
+                        f"Q{precio:.2f}",
+                        f"Q{total:.2f}"
+                    ]
+                    for d, width in zip(datos, ancho_columnas):
+                        tk.Label(fila, text=d, font=("Arial", 10),
+                                 bg='white', width=width, anchor='w').pack(side='left', padx=2)
+
+                tk.Label(scroll_frame, text=f"TOTAL GENERAL: Q{total_general:.2f}",
+                         bg='white', fg='green', font=("Arial", 11, "bold")).pack(pady=10)
+
+        else:
+            horas = RegistroHoras.obtener_registros_horarios(id_empleado, inicio, fin)
+
+            if not horas:
+                tk.Label(scroll_frame, text="No hay registros de horas en este periodo.",
+                         bg='white', fg='gray', font=("Arial", 10, "italic")).pack()
+            else:
+                tabla = TablaHoras(scroll_frame, horas)
+                tabla.mostrar()
+
+        frame_botones = tk.Frame(frame, bg='white')
+        frame_botones.grid(row=1, column=0, sticky='ew', pady=10)
+
+        tk.Button(frame_botones, text="Cerrar", bg="#0078D7", fg="white",
+                  font=("Arial", 10, "bold"), relief='flat', cursor="hand2",
+                  command=self.menu_empleado).pack(pady=10)
+
+    def registrar_entrada(self):
+        id_empleado = Cuentas.buscar_id(self.usuario_actual, self.password_actual)
+        RegistroHoras.registrar_entrada(id_empleado)
+        messagebox.showinfo("Entrada registrada", "Tu hora de entrada fue registrada correctamente.")
+        self.menu_empleado()
+
+    def registrar_salida(self):
+        id_empleado = Cuentas.buscar_id(self.usuario_actual, self.password_actual)
+        RegistroHoras.registrar_salida(id_empleado)
+        messagebox.showinfo("Salida registrada", "Tu hora de salida fue registrada correctamente.")
+        self.menu_empleado()
+
+
+    #====MÉTODO PARA EJECUTAR====
     def ejecutar(self):
         self.root.mainloop()
 
