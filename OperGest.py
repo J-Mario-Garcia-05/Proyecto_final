@@ -3,8 +3,6 @@ import datetime
 from datetime import datetime, date, timedelta
 import tkinter as tk
 from tkinter import messagebox, ttk
-from openpyxl import Workbook
-import os
 
 
 DB_NAME = "registros.db"
@@ -773,7 +771,7 @@ class RegistroHoras:
 
     @staticmethod
     def obtener_por_empleado(id_empleado):
-        with RegistroHoras._conn as conn:
+        with RegistroHoras._conn() as conn:
             c = conn.cursor()
             c.execute("""
                   SELECT fecha, hora_entrada, hora_salida, horas_trabajadas, salario_hora
@@ -1327,7 +1325,6 @@ class InterfazGrafica:
             ("Registrar empleado", self.registrar_empleado),
             ("Listar empleados", self.listar_empleados),
             ("Despedir empleado", self.despedir_empleado),
-            ("Calcular pago", self.pagar),
             ("Crear cuenta", self.crear_cuenta)
         ]
 
@@ -1688,109 +1685,6 @@ class InterfazGrafica:
 
         except ValueError as e:
             messagebox.showerror("Error", str(e))
-
-    def pagar(self):
-        self.limpiar_contenedor()
-        self.crear_cabecera_submenu("💰 Pago de Empleados")
-
-        frame = tk.Frame(self.contenedor, bg='white')
-        frame.pack(fill='both', expand=True, padx=40, pady=20)
-
-        # --- Selección de empleado ---
-        tk.Label(frame, text="Seleccione un empleado:", font=("Arial", 11, "bold"), bg='white').pack(pady=10)
-        empleados = Empleados.listar()
-        lista_nombres = [f"{e['id']} - {e['nombre']}" for e in empleados]
-
-        combo = ttk.Combobox(frame, values=lista_nombres, state="readonly", width=40)
-        combo.pack(pady=5)
-
-        frame_tabla = tk.Frame(frame, bg='white')
-        frame_tabla.pack(fill='both', expand=True, pady=10)
-
-        frame_botones = tk.Frame(frame, bg='white')
-        frame_botones.pack(pady=15)
-
-        def mostrar_reporte():
-            for widget in frame_tabla.winfo_children():
-                widget.destroy()
-
-            if not combo.get():
-                messagebox.showwarning("Aviso", "Debe seleccionar un empleado.")
-                return
-
-            id_empleado = int(combo.get().split(" - ")[0])
-            registros = RegistroHoras.obtener_por_empleado(id_empleado)
-
-            if not registros:
-                messagebox.showinfo("Sin datos", "Este empleado no tiene horas registradas.")
-                return
-
-            # Crear tabla dentro del frame_tabla
-            tabla = TablaHoras(frame_tabla, registros)
-            tabla.mostrar()
-            frame_tabla.total_pago = sum(
-                (r.get('horas_trabajadas', 0) or 0) * (r.get('salario_hora', 0) or 0)
-                for r in registros
-            )
-            frame_tabla.registros = registros
-            frame_tabla.id_empleado = id_empleado
-
-        def guardar_excel():
-            if not hasattr(frame_tabla, 'registros'):
-                messagebox.showwarning("Aviso", "Primero visualice un reporte antes de pagar.")
-                return
-
-            registros = frame_tabla.registros
-            total_pago = frame_tabla.total_pago
-            id_empleado = frame_tabla.id_empleado
-
-            empleado = next((e for e in empleados if e['id'] == id_empleado), None)
-            nombre_empleado = empleado['nombre'] if empleado else "Empleado"
-
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Reporte de Pago"
-
-            ws.append(["Empleado:", nombre_empleado])
-            ws.append(["Fecha de Pago:", datetime.date.today().strftime("%d/%m/%Y")])
-            ws.append([])
-            ws.append(["Fecha", "Hora Entrada", "Hora Salida", "Horas Totales", "Salario/Hora", "Pago Día"])
-
-            for r in registros:
-                horas = r.get('horas_trabajadas', 0)
-                pago_dia = horas * r.get('salario_hora', 0)
-                ws.append([
-                    r.get('fecha', ''),
-                    r.get('hora_entrada', ''),
-                    r.get('hora_salida', ''),
-                    f"{horas:.2f}",
-                    f"Q{r.get('salario_hora', 0):.2f}",
-                    f"Q{pago_dia:.2f}"
-                ])
-
-            ws.append([])
-            ws.append(["", "", "", "", "TOTAL A PAGAR:", f"Q{total_pago:.2f}"])
-
-            carpeta = "reportes_pago"
-            os.makedirs(carpeta, exist_ok=True)
-            nombre_archivo = f"{carpeta}/Pago_{nombre_empleado.replace(' ', '_')}_{datetime.date.today()}.xlsx"
-            wb.save(nombre_archivo)
-
-            RegistroHoras.reiniciar_horas(id_empleado)
-
-            messagebox.showinfo("Pago registrado",
-                                f"Se guardó el reporte en:\n{nombre_archivo}\n\nTotal pagado: Q{total_pago:.2f}")
-
-            self.gestion_empleados()
-
-        tk.Button(frame_botones, text="📄 Ver Reporte", font=("Arial", 10, "bold"),
-                  bg="#3498db", fg="white", width=14, command=mostrar_reporte).pack(side='left', padx=10)
-
-        tk.Button(frame_botones, text="💰 Pagar", font=("Arial", 10, "bold"),
-                  bg="#27ae60", fg="white", width=14, command=guardar_excel).pack(side='left', padx=10)
-
-        tk.Button(frame_botones, text="↩️ Regresar", font=("Arial", 10, "bold"),
-                  bg="#e74c3c", fg="white", width=14, command=self.gestion_empleados).pack(side='left', padx=10)
 
     #=====GESTIÓN PEDIDOS=====
     def registrar_corte(self):

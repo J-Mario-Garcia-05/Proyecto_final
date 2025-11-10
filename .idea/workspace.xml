@@ -4,10 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c941d9b-e205-4869-af9a-ccf5ea61629d" name="Changes" comment="Agregar opcion agregar tarea, corregir clases">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    <list default="true" id="6c941d9b-e205-4869-af9a-ccf5ea61629d" name="Changes" comment="ventana empleado, ventana pagar">
       <change beforePath="$PROJECT_DIR$/OperGest.py" beforeDir="false" afterPath="$PROJECT_DIR$/OperGest.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/registros.db" beforeDir="false" afterPath="$PROJECT_DIR$/registros.db" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -85,7 +83,7 @@
       <workItem from="1761098777205" duration="39447000" />
       <workItem from="1761581168478" duration="8404000" />
       <workItem from="1761754076163" duration="25012000" />
-      <workItem from="1762224131411" duration="72957000" />
+      <workItem from="1762224131411" duration="73286000" />
     </task>
     <task id="LOCAL-00001" summary="Tablas pedido, operaciones, empleados">
       <option name="closed" value="true" />
@@ -167,7 +165,15 @@
       <option name="project" value="LOCAL" />
       <updated>1762732613919</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary="ventana empleado, ventana pagar">
+      <option name="closed" value="true" />
+      <created>1762757262452</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1762757262452</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -184,10 +190,11 @@
     <MESSAGE value="Actualizar tablas y listado de empleados" />
     <MESSAGE value="Agregar registro de pedidos, mejora de clases" />
     <MESSAGE value="Agregar opcion agregar tarea, corregir clases" />
-    <option name="LAST_COMMIT_MESSAGE" value="Agregar opcion agregar tarea, corregir clases" />
+    <MESSAGE value="ventana empleado, ventana pagar" />
+    <option name="LAST_COMMIT_MESSAGE" value="ventana empleado, ventana pagar" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/Proyecto_final$OperGest.coverage" NAME="OperGest Coverage Results" MODIFIED="1762757026389" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/Proyecto_final$OperGest.coverage" NAME="OperGest Coverage Results" MODIFIED="1762757432514" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Proyecto_final$PlantillaProyecto.coverage" NAME="PlantillaProyecto Coverage Results" MODIFIED="1762231397777" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/../App Bancopoly" />
   </component>
 </project>
